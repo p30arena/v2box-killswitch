@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+*.log
+*.pcap
+*.pcapng
+*.backup
+*.bak
+*.orig
+*.tmp
+.env
+.env.*
+config/local*
+config/generated*
+config/pf-anchor.active.conf
+config/pf-anchor.failclosed.conf

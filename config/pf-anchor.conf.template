@@ -1,0 +1,13 @@
+# Review-only template. Do not load until interfaces and endpoint are freshly verified.
+# Prefix `flags any` is intentional: it admits established TCP flows at activation.
+vpn_if = "utunX"
+physical_if = "enX"
+peer_v4 = "198.51.100.1"
+peer_port = "443"
+
+pass out quick on lo0 all no state
+pass out quick on $vpn_if all no state
+pass out quick on $physical_if inet proto tcp to $peer_v4 port $peer_port flags any keep state (if-bound)
+pass out quick inet proto udp from any port 68 to any port 67 keep state
+pass out quick inet6 proto udp from any port 546 to ff02::1:2 port 547 keep state
+block drop out quick all

@@ -1,0 +1,3 @@
+# Copy to /etc/v2box-killswitch/endpoint and set root:wheel mode 600.
+# Use the server hostname and TCP port from your V2Box profile.
+vpn.example.invalid 443

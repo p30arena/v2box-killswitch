@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.p30arena.v2box-killswitch.watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/libexec/v2box-killswitch/watchdog.sh</string>
+  </array>
+  <key>EnvironmentVariables</key><dict><key>V2BOX_SERVICE</key><string>V2BOX</string></dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>15</integer>
+</dict>
+</plist>
