@@ -1,4 +1,4 @@
-# On-preserving app/backend update — prepared, NOT installed
+# On-preserving app/backend update — approved installation completed
 
 `tools/update_app_on.py` is a narrow alternative to the Off-only installer. It
 updates only the backend, menu app and client pin. It does not replace the helper
@@ -12,7 +12,9 @@ run VPN commands; enable auto-reconnect; or launch/quit an app.
 
 The actual installed setup passed check-only: exact approved On enforcement,
 matching existing app/helper pins, and identical filtering/ownership modules.
-This does not constitute installation approval or a permanent protection lease.
+The user then separately approved installation and reopening only the Guard menu
+app. The update completed; it was not permission to disconnect V2Box, opt into
+auto-reconnect, force a crash or conduct another live disconnection test.
 
 ## Checks and retained state
 
@@ -78,6 +80,19 @@ occurs in these tests. An additional unprivileged temporary staging fixture
 actually copied/re-signed the development app and verified its patched helper pin
 and resulting client signature; no installed path changed and no app launched.
 
-The privileged check-only preflight actually passed against the active installed
-guard. Neither `--update-on` nor any app relaunch has been performed at this commit.
+The privileged check-only preflight passed against the active installed guard.
+After explicit approval, `--update-on` completed and the user-session Guard menu
+app was quit/reopened. Post-install verification established:
+
+- Backend bytes exactly match the reviewed candidate.
+- Current app/client pin and retained helper/app helper pin match.
+- Verified approved On, Disable available and auto-connect capability advertised.
+- Protected state remained identical across a subsequent helper refresh interval.
+- The menu app is running; `/etc/pf.conf` is unchanged.
+- No VPN stop/start, approval renewal, native worker installation or new agent.
+
+The backup is retained privately. Actual menu checkbox selection was not read;
+auto-reconnect starts Off by code and must be explicitly enabled by the user. The
+new automatic native Start API has NOT been live-tested. Source/model tests and
+installation verification do not prove that request succeeds for this provider.
 The existing Off-only updater remains unchanged and must NOT be used while On.

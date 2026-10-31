@@ -61,6 +61,9 @@ NOT counted as restored usable connectivity. No unprotected fallback was used.
   fail closed and interrupt connectivity; this is not permanent endpoint approval.
 - Persistent automatic reconnect is **not installed**. This was an explicit
   one-time diagnostic reconnect, not proof of an autonomous recovery service.
+  Subsequently, a separately approved [app update](ON-UPDATE.md) installed the
+  start-only opt-in feature without disconnecting V2Box. Its native automatic
+  Start call remains live-untested; it is Off on app launch.
 
 Private evidence remains under the installed first-test/state directories. Do
 not publish captures, discovery/configuration or private backups.

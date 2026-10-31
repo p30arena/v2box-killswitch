@@ -1,4 +1,4 @@
-# Simple start-only app reconnect — SOURCE ONLY
+# Simple start-only app reconnect — installed, explicit opt-in required
 
 This is the reduced alternative to a privileged recovery worker. The menu app
 uses public SystemConfiguration APIs as the current non-root console user. No
@@ -72,17 +72,18 @@ modified policy, invalid UUID and pending token. A separate unprivileged native
 read-only lookup actually reported the live V2Box service Connected. It did not
 call Start and does not validate the new API's reconnect behaviour.
 
-The installed diagnostic app/backend predate these fields and do not run this
-feature. The current guard is left unchanged and On following the third live
-trial. No installation, new agent, service activation or live reconnect test is
-part of this source work. The development kit is not a deployed/release build.
+Following separate approval, the [On-preserving update](ON-UPDATE.md) installed
+the app/backend/client pin and reopened only the Guard menu app. The helper binary
+was retained. Approved On, Disable, the new capability, mutual pins and retained
+protected state across a helper refresh were verified. No VPN stop/start or new
+agent was requested. This is not a public release or general production certification.
 
-A coordinated app/backend/pin update and then an explicitly approved opt-in live
-reconnect test are still required. An [On-preserving updater](ON-UPDATE.md) is now
-prepared and its read-only preflight passed, but installation has NOT run.
-The original updater is Off-only: do NOT run it
-against the active guard, disable protection automatically, or assume it supports
-an On-preserving update. Independent helper-failure GUI Disable and reboot/network/
+Auto-reconnect is Off on app launch. The user must select **Automatically reconnect
+V2Box (this launch)** in the Guard menu and confirm. Actual checkbox state was not
+independently read. The automatic native Start call still needs a separately
+approved live test; a successful earlier one-time scutil reconnect is not that test.
+The original updater is Off-only: do NOT run it against the active guard or
+disable protection automatically to make an update possible. Independent helper-failure GUI Disable and reboot/network/
 IPv6 validation remain open. The live endpoint approval still has its existing
 24-hour expiry; this feature does not extend it or change expiry's fail-closed
 behaviour. Public release remains withdrawn.

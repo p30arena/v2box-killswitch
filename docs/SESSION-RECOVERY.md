@@ -3,7 +3,8 @@
 `src/session_recovery.py` composes the existing recovery state machine, a scoped
 user-session VPN command adapter and an optional bound health probe. It has no
 entrypoint, default runner, scheduler, launch agent or native transport. It is NOT
-wired into the installed app. Automatic reconnect remains unavailable there.
+wired into the installed app. This privileged/brokered reconnect path remains
+unavailable; the installed app's separate start-only convenience is described below.
 
 Current reduced-scope work uses [app-session start-only reconnect](APP-AUTO-RECONNECT.md)
 instead. It needs no privileged executor and cannot change PF or stop a VPN; a
