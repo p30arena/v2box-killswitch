@@ -8,6 +8,10 @@ private let serviceName = "org.v2boxkillswitch.helper"
 private final class CompletionGate {
     private let lock = NSLock()
     private var finished = false
+    var pending: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !finished
+    }
     func claim() -> Bool {
         lock.lock(); defer { lock.unlock() }
         if finished { return false }
@@ -70,7 +74,19 @@ final class GuardClient {
                 finish(.failure(ClientError.rejected("Administrator authorization is required.")))
                 return
             }
-            proxy.setProtectionEnabled(enabled ?? false, authorization: authorization, reply: reply)
+            // Verify a signed response on this SAME connection before sending
+            // the sensitive authorization form. A service name alone is not trust.
+            proxy.status { data, error in
+                guard gate.pending else { return }
+                guard error == nil, let data,
+                      let object = try? JSONSerialization.jsonObject(with: data),
+                      let status = object as? [String: String],
+                      status[(enabled == true) ? "can_enable" : "can_disable"] == "true" else {
+                    finish(.failure(ClientError.rejected("Helper did not confirm this operation is available.")))
+                    return
+                }
+                proxy.setProtectionEnabled(enabled ?? false, authorization: authorization, reply: reply)
+            }
         case "reconnect": proxy.reconnectVPN(reply)
         default: finish(.failure(ClientError.unavailable))
         }

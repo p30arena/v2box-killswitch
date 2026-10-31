@@ -13,8 +13,10 @@ helper pin; the full development-kit builder signs/pins both artifacts locally.
 macOS 13+ `NSXPCConnection.setCodeSigningRequirement` pins an exact approved
 40-hex CDHash before resuming connections. The client pins the helper and the
 helper pins the client. Foundation validates messages; no PID-based lookup or
-claimed bundle-ID check substitutes for identity. Positive handshake still needs
-live testing. Updates require explicit repinning.
+claimed bundle-ID check substitutes for identity. Anonymous same-process positive
+and negative handshake tests pass; cross-process installed-helper validation is
+still pending. Updates require explicit repinning. Before sending an authorization
+form, the client requires a signed status response on the SAME connection.
 
 UI protection changes obtain `org.v2boxkillswitch.manage` through Authorization
 Services, externalize the authorization form, and retain it until reply/timeout.
@@ -50,6 +52,11 @@ commands and no shell. It refuses Enable when PF safety preconditions fail.
 `bash menu-bar/test-security.sh` runs non-interactive pin-parser and invalid-form
 length tests, not positive authorization/peer tests. The helper and client compile.
 No services, rights or live PF rules have been installed by these checks.
+
+`bash menu-bar/test-ipc.sh` builds/ad-hoc-signs and runs an unprivileged anonymous
+IPC test executable: matching pins succeed, a mismatched incoming client cannot
+invoke the exported method, and a mismatched server response is rejected. It does
+not run the production helper, register a Mach service or request admin rights.
 
 Root deployment, rights registration and first firewall activation require a
 separate reviewed approval. Existing emergency disable limitations, IPC failure

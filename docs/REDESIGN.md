@@ -73,9 +73,12 @@ router includes DNS or a router-hosted proxy. It does not permit the entire LAN.
 ```sh
 python3 -m unittest discover -s tests -v
 bash menu-bar/test-security.sh
+bash menu-bar/test-ipc.sh
 python3 tools/build_development_kit.py
 ```
 
-All output is confined to temporary files or ignored `.build` directories. Building
+The IPC check runs only an unprivileged anonymous test listener, never the root
+helper or a registered service. All output is confined to temporary files or
+ignored `.build` directories. Building
 the development kit does local ad-hoc signing only; it does not install services,
 change authorization rights, load PF or launch any app/helper/backend.
