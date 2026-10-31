@@ -42,6 +42,38 @@ def _run(args):
     return subprocess.run(args, capture_output=True, text=True, timeout=5, check=False)
 
 
+def physical_devices(hardware_text):
+    """Parse Network Setup hardware-port inventory; ignore virtual/non-en devices."""
+    devices = re.findall(r"(?m)^Device: (en[0-9]+)$", hardware_text)
+    return sorted(set(devices))
+
+
+def discover_active(run=_run):
+    """Discover scoped IPv4 routers across active physical ports only.
+
+    Interfaces without an on-link scoped default are skipped. Any malformed
+    active route is rejected rather than replaced with a general/default route.
+    """
+    ports = run(["/usr/sbin/networksetup", "-listallhardwareports"])
+    if ports.returncode:
+        raise PolicyError("could not enumerate physical interfaces")
+    found = []
+    for device in physical_devices(ports.stdout):
+        info = run(["/sbin/ifconfig", device])
+        if info.returncode:
+            continue
+        if not re.search(r"^\s*status: active\s*$", info.stdout, re.M):
+            continue
+        route = run(["/sbin/route", "-n", "get", "-ifscope", device, "default"])
+        if route.returncode:
+            continue
+        found.append(discover(device, run))
+    # Two Wi-Fi/Ethernet interfaces can be active simultaneously; retaining both
+    # is deliberate, but exact duplicate entries are collapsed.
+    return sorted({(x["interface"], x["address"], x["subnet"]): x for x in found}.values(),
+                  key=lambda x: (x["interface"], x["address"]))
+
+
 def discover(device, run=_run):
     """Read twice to detect an observed route change during discovery.
 
