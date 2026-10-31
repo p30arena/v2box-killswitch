@@ -76,6 +76,14 @@ class RecoveryTests(unittest.TestCase):
         self.recovery.tick(0, "Disconnected", "unverified", True)
         self.assertEqual(self.recovery.tick(1, "Connected", "usable", True).attempts, 0)
 
+    def test_unverified_enforcement_cannot_clear_retry_budget_as_healthy(self):
+        self.recovery.tick(0, "Disconnected", "unverified", True)
+        result = self.recovery.tick(1, "Connected", "usable", False)
+        self.assertEqual(result.state, "enforcement_unverified")
+        self.assertEqual(result.attempts, 1)
+        self.assertEqual(result.next_due, 5)
+        self.assertEqual(self.commands.calls, ["start"])
+
     def test_bad_clock_rejected(self):
         self.recovery.tick(10, "Connected", "usable", True)
         for now in (9, float("nan")):

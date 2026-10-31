@@ -56,16 +56,16 @@ class Recovery:
         def result(state, action="none"):
             return RecoveryResult(state, self.attempts, self.next_due, action)
 
+        if enforcement_verified is not True:
+            self.bad_health = 0
+            self.transition_since = None
+            return result("enforcement_unverified")
         if vpn_status == "Connected" and health == "usable":
             self.attempts = 0
             self.next_due = now
             self.bad_health = 0
             self.transition_since = None
             return result("healthy")
-        if enforcement_verified is not True:
-            self.bad_health = 0
-            self.transition_since = None
-            return result("enforcement_unverified")
         if vpn_status not in ("Connected", "Disconnected", "Connecting", "Disconnecting"):
             self.bad_health = 0
             self.transition_since = None
