@@ -62,6 +62,11 @@ class DriverTests(unittest.TestCase):
         with self.assertRaises(ControllerError): self.driver.replace(compile_policy(CONFIG))
         self.assertEqual(self.kernel.rules, "")
 
+    def test_macos_scrub_normalization_is_not_a_preceding_filter(self):
+        self.kernel.root = 'scrub-anchor "com.apple/*" all fragment reassemble\n' + self.kernel.root
+        self.driver.replace(compile_policy(CONFIG))
+        self.assertTrue(self.driver.snapshot()["gate_verified"])
+
     def test_preceding_rule_rejected(self):
         self.kernel.root = "pass out all\n" + self.kernel.root
         with self.assertRaises(ControllerError): self.driver.replace(compile_policy(CONFIG))

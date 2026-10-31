@@ -28,6 +28,9 @@ class PFDriver:
         # final deny. Reject earlier filters rather than guessing their effects.
         root = self._call("-sr")
         lines = [x.strip() for x in root.splitlines() if x.strip() and not x.startswith("#")]
+        # macOS -sr includes scrub normalization rules. They cannot grant egress
+        # and are not filter rules; the gate must precede every actual filter.
+        lines = [x for x in lines if not x.startswith(("scrub ", "scrub-anchor ", "no scrub "))]
         return bool(lines and re.fullmatch(
             r'anchor "' + re.escape(ANCHOR) + r'" (?:quick|quick all|all quick)', lines[0]))
 

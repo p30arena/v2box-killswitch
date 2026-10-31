@@ -112,7 +112,12 @@ def _compile(config, quarantine):
         rules.append(f"pass out quick on {tun} all no state")
     for dev, version, address in gateways:
         family = "inet" if version == 4 else "inet6"
-        rules.append(f"pass out quick on {dev} {family} to {address} no state")
+        if version == 4:
+            rules.append(f"pass out quick on {dev} inet proto icmp to {address} icmp-type echoreq no state")
+            rules.append(f"pass out quick on {dev} inet proto udp from any port 68 to {address} port 67 no state")
+        else:
+            rules.append(f"pass out quick on {dev} inet6 proto icmp6 to {address} icmp6-type echoreq no state")
+        rules.append(f"pass out quick on {dev} {family} proto tcp to {address} port {{ 80, 443 }} flags any no state")
     for dev in physical:
         for version, address, port, proto in sorted(endpoints):
             family = "inet" if version == 4 else "inet6"

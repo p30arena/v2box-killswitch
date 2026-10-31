@@ -33,7 +33,7 @@ class CoordinatorTests(unittest.TestCase):
         result = self.coordinator.update(self.base, self.inventory, "unknown", 1000)
         self.assertNotIn("utun3", self.kernel.rules)
         self.assertNotIn("1.1.1.1", self.kernel.rules)
-        self.assertIn("to 192.168.1.1 no state", self.kernel.rules)
+        self.assertIn("to 192.168.1.1 icmp-type echoreq no state", self.kernel.rules)
         self.assertEqual(result["policy_mode"], "quarantine")
         self.assertTrue(self.kernel.enabled)
 

@@ -66,8 +66,10 @@ in the reviewed config is authoritative.
 - Ad-hoc local signing is not notarized public distribution. Explicit repinning
   is required after updates; there is no reviewed updater/uninstaller yet.
 
-Router access is intentional direct-network permission: all protocols to that
-router includes DNS or a router-hosted proxy. It does not permit the entire LAN.
+Router access is intentional direct-network permission: ICMP echo, TCP 80/443
+and DHCP renewal only. It excludes general router DNS and the rest of the LAN.
+Router web/proxy services on the allowed ports remain an intentional bypass;
+PF cannot restrict those exceptions to an admin browser.
 
 ## Non-activating checks/build
 

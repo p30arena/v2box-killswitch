@@ -59,12 +59,21 @@ class PolicyTests(unittest.TestCase):
     def test_gateway_changes_replace_old_exception(self):
         self.config["gateways"] = [{"interface": "en0", "address": "192.168.1.1", "subnet": "192.168.1.0/24"}]
         first = compile_policy(self.config)
-        self.assertIn("on en0 inet to 192.168.1.1 no state", first)
+        self.assertIn("on en0 inet proto icmp to 192.168.1.1 icmp-type echoreq no state", first)
         self.config["gateways"] = [{"interface": "en0", "address": "10.0.0.1", "subnet": "10.0.0.0/24"}]
         second = compile_policy(self.config)
-        self.assertIn("on en0 inet to 10.0.0.1 no state", second)
+        self.assertIn("on en0 inet proto icmp to 10.0.0.1 icmp-type echoreq no state", second)
         self.assertNotIn("192.168.1.1", second)
         self.assertNotIn("to 10.0.0.0/24", second)
+
+    def test_router_access_does_not_open_general_dns_or_lan(self):
+        self.config["gateways"] = [{"interface": "en0", "address": "192.168.1.1", "subnet": "192.168.1.0/24"}]
+        rules = compile_policy(self.config)
+        self.assertNotIn("inet to 192.168.1.1 no state", rules)
+        self.assertNotIn("port 53", rules)
+        self.assertIn("proto icmp to 192.168.1.1", rules)
+        self.assertIn("to 192.168.1.1 port { 80, 443 }", rules)
+        self.assertIn("port 68 to 192.168.1.1 port 67", rules)
 
     def test_gateway_snapshot_validation(self):
         for dev, address, subnet in [("utun3", "192.168.1.1", "192.168.1.0/24"),
