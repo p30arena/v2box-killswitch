@@ -78,7 +78,9 @@ trial. No installation, new agent, service activation or live reconnect test is
 part of this source work. The development kit is not a deployed/release build.
 
 A coordinated app/backend/pin update and then an explicitly approved opt-in live
-reconnect test are still required. The existing updater is Off-only: do NOT run it
+reconnect test are still required. An [On-preserving updater](ON-UPDATE.md) is now
+prepared and its read-only preflight passed, but installation has NOT run.
+The original updater is Off-only: do NOT run it
 against the active guard, disable protection automatically, or assume it supports
 an On-preserving update. Independent helper-failure GUI Disable and reboot/network/
 IPv6 validation remain open. The live endpoint approval still has its existing
