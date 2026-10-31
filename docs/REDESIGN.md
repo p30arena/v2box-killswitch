@@ -19,7 +19,10 @@ The README withdrawal warning remains in effect.
 - `src/pf_driver.py`: experimental injected-runner PF driver tested only against
   a fake kernel. Scoped stdin anchor replacement/removal, first quick-root-gate
   check and explicit owned-token acquisition/release. No default command runner,
-  token store, daemon or executable entrypoint is supplied.
+  daemon or executable entrypoint is supplied.
+- `src/token_store.py`: boot-bound, atomic token journal using directory-relative
+  file operations, ownership/mode validation and symlink/hardlink rejection.
+  Tested in temporary directories; not installed as privileged state.
 - `menu-bar/`: native Swift/AppKit preview and an unprivileged XPC client shell.
   Preview controls are simulated; client reports ERROR/UNKNOWN and disables actions
   with no helper. Neither is connected to operational PF controls.
@@ -41,7 +44,7 @@ configuration changes.
    `XPC-HELPER.md`). Only the client shell exists. Validate authorization and
    signing on each supported macOS release. No arbitrary shell input.
 2. Finish and validate the experimental PF driver: durable root-owned token
-   storage, same-boot token reconciliation, complete ruleset read-back, skip/state
+   storage integration, same-boot token reconciliation, complete ruleset read-back, skip/state
    interaction, preexisting states, and real macOS output/atomicity. Fake-kernel
    tests cannot prove these. Do not supply an operational runner before review.
 3. Crash-consistent kernel-state/intent reconciliation and an independent local

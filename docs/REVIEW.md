@@ -26,7 +26,10 @@ No global flush or -d command is used. These tests do not validate real macOS PF
 ## Still release-blocking
 
 - No authenticated signed XPC listener or authorized privileged operations.
-- No real root-owned token store, boot identity or kernel-restart reconciliation.
+- A boot-bound token journal is implemented and offline-tested; integration into
+  a privileged service, trusted boot-identity acquisition and same-boot PF/kernel
+  restart reconciliation are still missing. Parent state directories must be
+  trusted; fsync/atomic replace alone does not prove power-loss durability.
 - Real PF state/skip behavior and complete rule equality verification untested.
 - No automatic endpoint-update trust/bootstrap mechanism or approval interface.
 - No reliable emergency GUI path when the privileged service fails.
