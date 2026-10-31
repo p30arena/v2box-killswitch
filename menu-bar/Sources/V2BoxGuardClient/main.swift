@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 
-// Client API for a future signed, root-owned XPC helper. There is intentionally
-// no shell fallback. The service is not supplied/registered in this project yet.
+// Pinned client for the root-owned helper. No shell fallback or PF commands.
+// Source builds do not install/update the running app/helper.
 private let serviceName = "org.v2boxkillswitch.helper"
 
 private final class CompletionGate {
@@ -78,10 +78,8 @@ final class GuardClient {
             // the sensitive authorization form. A service name alone is not trust.
             proxy.status { data, error in
                 guard gate.pending else { return }
-                guard error == nil, let data,
-                      let object = try? JSONSerialization.jsonObject(with: data),
-                      let status = object as? [String: String],
-                      (operation == "authorization" || status[(enabled == true) ? "can_enable" : "can_disable"] == "true") else {
+                guard HelperPreflight.allows(enabled: enabled, authorizationOnly: operation == "authorization",
+                                             data: data, message: error) else {
                     finish(.failure(ClientError.rejected("Helper did not confirm this operation is available.")))
                     return
                 }
@@ -118,6 +116,13 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let diagnostics = NSMenuItem(title: "Diagnostic history: unavailable", action: nil, keyEquivalent: "")
     private let incident = NSMenuItem(title: "Recorded failure: unavailable", action: nil, keyEquivalent: "")
     private var actionInFlight = false
+    private var statusInFlight = false
+    private var refreshTimer: Timer?
+    private var autoEnabled = false
+    private var autoAvailable = false
+    private let autoStatus = NSMenuItem(title: "Auto-reconnect: Off (this launch)", action: nil, keyEquivalent: "")
+    private let autoToggle = NSMenuItem(title: "Automatically reconnect V2Box (this launch)", action: #selector(toggleAutoReconnect), keyEquivalent: "")
+    private lazy var autoConnector = AppAutoReconnect { [weak self] text in self?.autoStatus.title = text }
     private let toggle = NSMenuItem(title: "Enable Protection…", action: #selector(enableProtection), keyEquivalent: "")
     private let disable = NSMenuItem(title: "Disable Protection…", action: #selector(disableProtection), keyEquivalent: "")
     private var requestGeneration = 0
@@ -137,7 +142,10 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         incident.toolTip = "Historical event; it may not describe current connectivity."
         toggle.target = self; disable.target = self; reconnect.target = self
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
-        menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect); menu.addItem(.separator())
+        menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect)
+        autoToggle.target = self; autoToggle.isEnabled = false
+        autoToggle.toolTip = "Start disconnected VPN only; five attempts per opt-in. Never changes protection."
+        menu.addItem(autoStatus); menu.addItem(autoToggle); menu.addItem(.separator())
         let authorize = NSMenuItem(title: "Verify Administrator Access…", action: #selector(verifyAuthorization), keyEquivalent: "")
         authorize.target = self; menu.addItem(authorize)
         let refresh = NSMenuItem(title: "Refresh Status", action: #selector(refreshStatus), keyEquivalent: "r")
@@ -145,6 +153,9 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = NSMenuItem(title: "Quit (does not change protection)", action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self; menu.addItem(quit)
         item.menu = menu
+        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.refreshStatus() }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
         refreshStatus()
     }
 
@@ -184,21 +195,26 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func refreshStatus() {
-        guard !actionInFlight else { return }
+        guard !actionInFlight, !statusInFlight else { return }
+        statusInFlight = true
         requestGeneration += 1
         let generation = requestGeneration
         client.request("status") { [weak self] result in
+            let responseTime = ProcessInfo.processInfo.systemUptime
             DispatchQueue.main.async {
-                guard let self, generation == self.requestGeneration else { return }
+                guard let self else { return }
+                self.statusInFlight = false
+                guard generation == self.requestGeneration else { return }
                 switch result {
                 case .failure(let error):
+                    self.updateAutoReconnect([:], receivedAt: responseTime)
                     self.actual.title = "Protection: ERROR / UNKNOWN"
                     self.vpn.title = "VPN health: UNKNOWN"
                     self.mode.title = "Policy: UNKNOWN"
                     self.trial.title = "Trial: unavailable"
                     self.showDiagnostics([:])
                     self.toggle.isEnabled = false
-                    self.disable.isEnabled = false
+                    self.disable.isEnabled = true // Try authenticated Disable despite status failure.
                     self.reconnect.isEnabled = false
                     self.item.button?.title = "Guard !"
                     self.item.button?.toolTip = error.localizedDescription
@@ -206,15 +222,19 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     let state = data["state"] ?? "unknown"
                     let health = data["vpn_health"] ?? "unverified"
                     guard ["on", "off", "error"].contains(state) else {
+                        self.updateAutoReconnect([:], receivedAt: responseTime)
                         self.actual.title = "Protection: ERROR / UNKNOWN"
+                        self.vpn.title = "VPN health: UNKNOWN"
+                        self.mode.title = "Policy: UNKNOWN"
                         self.trial.title = "Trial: unavailable"
                         self.showDiagnostics([:])
                         self.toggle.isEnabled = false
-                        self.disable.isEnabled = false
+                        self.disable.isEnabled = true
                         self.reconnect.isEnabled = false
                         self.item.button?.title = "Guard !"
                         return
                     }
+                    self.updateAutoReconnect(data, receivedAt: responseTime)
                     self.showDiagnostics(data)
                     switch data["trial_verdict"] {
                     case "limited_ipv4_pass": self.trial.title = "Trial: IPv4 checks passed (limited)"
@@ -280,6 +300,7 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.addButton(withTitle: enable ? "Enable" : "Disable")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if !enable { pauseAutoReconnect() }
         requestGeneration += 1 // Discard status replies from before this action.
         actionInFlight = true
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
@@ -317,7 +338,41 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func quitApp() { NSApp.terminate(nil) }
+    private func updateAutoReconnect(_ status: [String: String], receivedAt: TimeInterval) {
+        let age = ProcessInfo.processInfo.systemUptime - receivedAt
+        autoAvailable = age.isFinite && age >= 0 && age <= 3
+            && status["can_auto_connect"] == "true" && status["state"] == "on"
+            && status["policy_mode"] == "approved"
+        if autoEnabled && !autoAvailable { autoStatus.title = "Auto-reconnect: paused — protection not verified" }
+        autoToggle.isEnabled = autoEnabled || autoAvailable
+        autoToggle.toolTip = autoAvailable
+            ? "Start disconnected VPN only; five attempts per opt-in. Never changes protection."
+            : "Requires the matching app/backend feature and verified approved protection."
+        autoConnector.observe(status, receivedAt: receivedAt)
+    }
+
+    private func pauseAutoReconnect() {
+        autoEnabled = false; autoToggle.state = .off
+        autoConnector.setEnabled(false)
+    }
+
+    @objc private func toggleAutoReconnect() {
+        if autoEnabled { pauseAutoReconnect(); return }
+        guard autoAvailable else { return }
+        let alert = NSAlert()
+        alert.messageText = "Automatically reconnect V2Box?"
+        alert.informativeText = "For this app session only: request Start when disconnected, at most five attempts. Never stops/restarts the VPN or changes protection. Connected does not prove internet health. Choosing Disable pauses this feature; a submitted request may still finish."
+        alert.addButton(withTitle: "Enable Auto-reconnect"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        autoEnabled = true; autoToggle.state = .on
+        autoConnector.setEnabled(true)
+        refreshStatus()
+    }
+
+    @objc private func quitApp() {
+        pauseAutoReconnect(); refreshTimer?.invalidate()
+        NSApp.terminate(nil)
+    }
 }
 
 let app = NSApplication.shared

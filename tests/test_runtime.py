@@ -76,6 +76,55 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.runtime.dispatch("disable")["state"], "off")
         self.assertEqual(self.native.pf.rules, "")
 
+    def test_auto_connect_target_only_advertised_with_exact_approved_enforcement(self):
+        off = self.runtime.dispatch("status")
+        self.assertEqual(off["can_auto_connect"], "false")
+        self.assertNotIn("auto_connect_service_uuid", off)
+        self.runtime.dispatch("enable")
+        status = self.runtime.dispatch("status")
+        self.assertEqual(status["can_auto_connect"], "true")
+        self.assertEqual(status["auto_connect_service_uuid"], self.config["service_uuid"])
+        self.assertEqual(status["can_reconnect"], "false")  # No privileged runner.
+        self.runtime.dispatch("disable")
+        self.assertEqual(self.runtime.dispatch("status")["can_auto_connect"], "false")
+
+    def test_auto_connect_requires_uuid_and_normalizes_it(self):
+        self.config["service_uuid"] = "00000000-0000-0000-0000-00000000abcd"
+        self.runtime.dispatch("enable")
+        self.assertEqual(self.runtime.dispatch("status")["auto_connect_service_uuid"],
+                         "00000000-0000-0000-0000-00000000ABCD")
+        self.config["service_uuid"] = "not-a-service-id"
+        status = self.runtime.dispatch("status")
+        self.assertEqual(status["can_auto_connect"], "false")
+        self.assertNotIn("auto_connect_service_uuid", status)
+
+    def test_auto_connect_not_advertised_for_unknown_or_expired_approval(self):
+        self.runtime.dispatch("enable")
+        self.config["inventory"]["profiles"]["one"]["expires_at"] = 999
+        status = self.runtime.dispatch("status")
+        self.assertEqual(status["can_auto_connect"], "false")
+        self.assertNotIn("auto_connect_service_uuid", status)
+
+    def test_auto_connect_not_advertised_for_quarantine(self):
+        self.runtime.dispatch("enable")
+        self.config["profile"] = "unknown"
+        self.runtime.dispatch("refresh")
+        self.config["profile"] = "one"
+        status = self.runtime.dispatch("status")
+        self.assertEqual(status["policy_mode"], "quarantine")
+        self.assertEqual(status["can_auto_connect"], "false")
+        self.assertNotIn("auto_connect_service_uuid", status)
+
+    def test_auto_connect_not_advertised_for_modified_kernel_policy(self):
+        self.runtime.dispatch("enable")
+        self.native.pf.rules += "pass out all\n"
+        self.assertEqual(self.runtime.dispatch("status")["can_auto_connect"], "false")
+
+    def test_auto_connect_not_advertised_with_pending_token(self):
+        self.runtime.dispatch("enable")
+        self.controller.backend.tokens.value = "pending"
+        self.assertEqual(self.runtime.dispatch("status")["can_auto_connect"], "false")
+
     def test_pending_token_refuses_enable_before_rule_change(self):
         self.controller.backend.tokens.value = "pending"
         with self.assertRaises(ControllerError): self.runtime.dispatch("enable")

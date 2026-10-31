@@ -5,6 +5,11 @@ user-session VPN command adapter and an optional bound health probe. It has no
 entrypoint, default runner, scheduler, launch agent or native transport. It is NOT
 wired into the installed app. Automatic reconnect remains unavailable there.
 
+Current reduced-scope work uses [app-session start-only reconnect](APP-AUTO-RECONNECT.md)
+instead. It needs no privileged executor and cannot change PF or stop a VPN; a
+submitted user request may finish after Disable. This broader stop/restart model
+is not a prerequisite for that convenience and remains unwired.
+
 ## Evidence contract
 
 The future pinned/authenticated native bridge must supply a fresh `RecoveryView`.

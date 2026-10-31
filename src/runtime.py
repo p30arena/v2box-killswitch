@@ -178,6 +178,7 @@ class Runtime:
             return self.diagnostic_reply(result)
         if operation == "status":
             result = self.api.dispatch("status")
+            result["can_auto_connect"] = "false"
             self.diagnostic_status(result)
             if self.trial_reader is not None:
                 try:
@@ -203,6 +204,14 @@ class Runtime:
                     if actual.strip() != quarantine.strip():
                         result["state"] = "error"
                 result["can_enable"] = "true"
+                # User-session START only: not root execution or a PF authority.
+                # Advertise the target only with exact approved live enforcement.
+                if (result["state"] == "on" and result.get("policy_mode") == "approved"
+                        and actual.strip() == canonical.strip()
+                        and isinstance(config.get("service_uuid"), str)
+                        and re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", config["service_uuid"])):
+                    result["can_auto_connect"] = "true"
+                    result["auto_connect_service_uuid"] = config["service_uuid"].upper()
             except Exception:
                 result["can_enable"] = "false"
                 if result["state"] == "on":

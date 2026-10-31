@@ -1,5 +1,5 @@
 #!/bin/bash
-# Package XPC client UI only. There is no helper/service in this repository.
+# Build client UI only. Does not install, launch or update the running helper.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 APP="$ROOT/.build/V2BoxGuardClient.app"
@@ -7,8 +7,10 @@ SDK="${SDKROOT:-$(/usr/bin/xcrun --sdk macosx --show-sdk-path)}"
 [[ -d "$SDK/System/Library/Frameworks/AppKit.framework" ]] || { echo "Invalid macOS SDK: $SDK" >&2; exit 1; }
 mkdir -p "$APP/Contents/MacOS"
 /usr/bin/swiftc -sdk "$SDK" -module-cache-path "$ROOT/.build/manual/ModuleCache" \
-  -framework AppKit -framework Security "$ROOT/Security/GuardProtocol.swift" \
+  -framework AppKit -framework Security -framework SystemConfiguration "$ROOT/Security/GuardProtocol.swift" \
   "$ROOT/Security/PeerSecurity.swift" \
+  "$ROOT/Sources/V2BoxGuardClient/AutoReconnect.swift" \
+  "$ROOT/Sources/V2BoxGuardClient/HelperPreflight.swift" \
   "$ROOT/Sources/V2BoxGuardClient/main.swift" \
   -o "$APP/Contents/MacOS/V2BoxGuardClient"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
@@ -26,4 +28,4 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 /usr/bin/plutil -lint "$APP/Contents/Info.plist"
 echo "Built UI client only: $APP"
-echo "No XPC helper is present; controls remain disabled. Not installed or launched."
+echo "Requires matching trusted helper/backend deployment; auto-reconnect defaults Off. Not installed or launched."
