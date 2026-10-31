@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 // Anonymous, in-process test service only. No Mach-service registration,
 // authorization prompts, root operations, PF, networking or GUI.
@@ -24,7 +25,14 @@ final class EchoDelegate: NSObject, NSXPCListenerDelegate {
     let service = EchoService()
     init(_ pin: PeerPin) { self.pin = pin }
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        do { try pin.enforce(on: connection) } catch { return false }
+        do {
+            let peer = try SessionPeer(connection: connection, pin: pin)
+            precondition(peer.effectiveUID == geteuid(), "UID must come from the actual test connection")
+            precondition(peer.matchesConsoleUID(geteuid()))
+            precondition(!peer.matchesConsoleUID(nil))
+            precondition(!peer.matchesConsoleUID(0))
+            precondition(!peer.matchesConsoleUID(geteuid() == 1 ? 2 : 1))
+        } catch { return false }
         connection.exportedInterface = NSXPCInterface(with: EchoProtocol.self)
         connection.exportedObject = service
         connection.resume()
@@ -66,6 +74,7 @@ func check(serverPin: PeerPin, clientPin: PeerPin, shouldSucceed: Bool, rejectBe
 }
 
 if #available(macOS 13.0, *) {
+    guard geteuid() != 0 else { fatalError("Run anonymous IPC tests as an unprivileged user") }
     guard CommandLine.arguments.count == 2 else { fatalError("Expected this test binary's CDHash") }
     let correct = try PeerPin(CommandLine.arguments[1])
     let wrong = try PeerPin(String(repeating: "0", count: 40))
@@ -73,7 +82,7 @@ if #available(macOS 13.0, *) {
     try check(serverPin: wrong, clientPin: correct, shouldSucceed: false, rejectBeforeDispatch: true)
     // A client expecting the wrong server must reject it too.
     try check(serverPin: correct, clientPin: wrong, shouldSucceed: false)
-    print("3 anonymous XPC identity tests passed. No privileged service or PF action.")
+    print("3 anonymous XPC identity suites and kernel-UID/console-owner gates passed. No privileged service or PF action.")
 } else {
     print("Skipped: macOS 13+ required")
 }

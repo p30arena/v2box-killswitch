@@ -52,6 +52,27 @@ struct PeerPin {
     }
 }
 
+// Per-connection identity. UID comes from the kernel connection, never an RPC
+// parameter. The requirement is enforced by Foundation before message dispatch.
+struct SessionPeer {
+    let effectiveUID: UInt32
+
+    @available(macOS 13.0, *)
+    init(connection: NSXPCConnection, pin: PeerPin) throws {
+        let uid = connection.effectiveUserIdentifier
+        guard uid != 0 else { throw SessionPeerError.rootPeerRejected }
+        try pin.enforce(on: connection)
+        effectiveUID = uid
+    }
+
+    func matchesConsoleUID(_ current: UInt32?) -> Bool {
+        guard let current, current != 0 else { return false }
+        return current == effectiveUID
+    }
+}
+
+enum SessionPeerError: Error { case rootPeerRejected }
+
 final class AuthorizationSession {
     private let reference: AuthorizationRef
     let externalData: Data

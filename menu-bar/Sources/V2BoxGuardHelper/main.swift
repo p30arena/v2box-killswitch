@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import Darwin
+import SystemConfiguration
 
 // Development helper source. No automatic installation or launchd registration.
 // Backend and pins must be installed by a reviewed installer before use.
@@ -67,7 +68,7 @@ final class FixedBackend {
     }
 }
 
-final class GuardService: NSObject, GuardXPCProtocol {
+final class GuardService: NSObject {
     private let queue = DispatchQueue(label: "org.v2boxkillswitch.operations")
     private let backend = FixedBackend()
     private var timer: DispatchSourceTimer?
@@ -141,11 +142,36 @@ final class GuardService: NSObject, GuardXPCProtocol {
         }
     }
 
-    func reconnectVPN(_ reply: @escaping (Data?, String?) -> Void) {
-        // Must run through an authenticated user-session agent, not root's VPN
-        // namespace. Do not start a GUI or accept service names from IPC.
-        reply(nil, "User-session reconnect integration is not implemented.")
+    func reconnectVPN(peer: SessionPeer, reply: @escaping (Data?, String?) -> Void) {
+        queue.async {
+            var uid: uid_t = 0
+            var gid: gid_t = 0
+            let console = SCDynamicStoreCopyConsoleUser(nil, &uid, &gid)
+            guard console != nil, peer.matchesConsoleUID(uid) else {
+                reply(nil, "Reconnect requires the current console user's verified connection.")
+                return
+            }
+            // Identity capture is implemented; supervised user execution and all-
+            // writer ordering are NOT. Never fall back to root's VPN namespace.
+            reply(nil, "User-session reconnect integration is not implemented.")
+        }
     }
+}
+
+// One facade per accepted connection, one shared operations queue/timer. Sharing
+// a facade would lose caller identity; creating a core per peer duplicates timers.
+final class GuardConnection: NSObject, GuardXPCProtocol {
+    private let core: GuardService
+    private let peer: SessionPeer
+    init(core: GuardService, peer: SessionPeer) { self.core = core; self.peer = peer }
+    func status(_ reply: @escaping (Data?, String?) -> Void) { core.status(reply) }
+    func checkAuthorization(_ authorization: Data, reply: @escaping (Data?, String?) -> Void) {
+        core.checkAuthorization(authorization, reply: reply)
+    }
+    func setProtectionEnabled(_ enabled: Bool, authorization: Data, reply: @escaping (Data?, String?) -> Void) {
+        core.setProtectionEnabled(enabled, authorization: authorization, reply: reply)
+    }
+    func reconnectVPN(_ reply: @escaping (Data?, String?) -> Void) { core.reconnectVPN(peer: peer, reply: reply) }
 }
 
 @available(macOS 13.0, *)
@@ -154,11 +180,11 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
     let service = GuardService()
     init(pin: PeerPin) { self.pin = pin }
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        guard connection.effectiveUserIdentifier != 0 else { return false }
-        do { try pin.enforce(on: connection) }
+        let peer: SessionPeer
+        do { peer = try SessionPeer(connection: connection, pin: pin) }
         catch { return false }
         connection.exportedInterface = NSXPCInterface(with: GuardXPCProtocol.self)
-        connection.exportedObject = service
+        connection.exportedObject = GuardConnection(core: service, peer: peer)
         connection.resume()
         return true
     }

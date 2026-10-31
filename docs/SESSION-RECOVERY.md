@@ -51,9 +51,11 @@ healthy sample, so unverified evidence cannot reset its retry budget.
 ## Critical integration blockers
 
 Fresh checks are NOT an atomic command lease. Disable can commit after the final
-read but before an unprivileged native command starts. The native bridge needs a
-bounded cancellation/ordering protocol; do not promise atomic Disable ordering
-or deploy this prototype on the basis of these unit tests.
+read but before an unprivileged native command starts. A separate
+[broker ordering model and native identity binding](RECOVERY-BROKER.md) now cover
+part of that design, but are not integrated with this controller or the live
+intent writers. Do not promise atomic Disable ordering or deploy this prototype
+on the basis of these unit tests.
 
 A production bridge also needs authenticated peer checks, stable policy/tunnel
 generations, aggregate callback deadlines, worker cancellation, lifecycle handling,
