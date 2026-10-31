@@ -35,6 +35,12 @@ This clears PF rules and states and disables PF; it can affect unrelated firewal
 
 The scripts and configuration are preserved for incident analysis only. They are not endorsed for installation. Any future replacement must be designed and tested on supported macOS releases, include a reliable local rollback that accounts for PF reference counting and launchd persistence, handle endpoint changes safely, define LAN policy explicitly, and be reviewed before publication.
 
+## Replacement development
+
+An offline-only redesign is being developed. See [development status](docs/REDESIGN.md)
+and [menu-bar requirements](docs/MENU-BAR.md). Passing mock tests does not make it
+safe to deploy. The menu-bar preview has simulated controls, not firewall controls.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
