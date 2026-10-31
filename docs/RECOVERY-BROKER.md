@@ -62,7 +62,9 @@ The installed Disable is untouched. Before any integration:
    mechanism; do not infer termination from a missing witness.
 2. Implement a bounded, trusted supervisor that executes only fixed scutil
    operations in the correct logged-in user's credentials AND bootstrap session,
-   never as root. Verify identity before exec; supervise all possible descendants.
+   never as root. A [read-only native worker](RECOVERY-WORKER.md) now verifies
+   session identity and pre-execution cancellation, but intentionally cannot
+   execute VPN commands. Root-to-user launch and full supervision remain blockers.
 3. Handle cancellation, cleanup and reconciliation without killing unrelated
    processes or trusting a stale/reused PID. A timeout alone is not termination.
 4. Integrate EVERY intent writer, including backend Disable and independent test
