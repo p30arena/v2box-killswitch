@@ -1,7 +1,10 @@
-# Private failure diagnostics — source/build only
+# Private failure diagnostics — local development deployment
 
-Added after the second trial. Not installed or activated. These changes cannot
-reconstruct the earlier outage; they instrument future backend decisions.
+Added after the second trial. The backend/helper/menu diagnostic update was
+explicitly approved and installed while Off. No policy was installed, timer armed
+or protection activated. These changes cannot reconstruct the earlier outage;
+they instrument future backend decisions. The instrumented trial-timer script
+itself remains source-only until a separately approved trial preparation.
 
 ## Stored evidence
 
@@ -79,7 +82,11 @@ permission to repeat a live trial or silently treat inconclusive evidence as pas
 
 ## Limits before another trial
 
-- No new deployment or trial has been authorized/prepared by this change.
+- Only the Off-state diagnostic deployment was approved. No new trial is prepared.
+- Post-update verification checked Off/PF Disabled/empty project anchor, absent
+  inventory and unloaded timer, exact backend source bytes, mutual code pins,
+  and a successful private journal write/read-back. A second read-only check
+  after the helper refresh interval again verified Off; /etc/pf.conf was unchanged.
 - Native capture-statistic handling was checked while Off; no new active capture
   has been certified loss-free.
 - No timer-quarantine marker was found for the second outage. Its cause remains
@@ -88,6 +95,9 @@ permission to repeat a live trial or silently treat inconclusive evidence as pas
   helper-unavailable message rather than a complete private failure record.
 - Failures before a trusted state directory/runtime lock is available cannot be
   journaled there safely; helper reporting remains limited to outcome unknown.
+- `tools/verify_diagnostics_off.py --verify-off` performs read-only deployment
+  checks. `--check-journal-write-off` additionally appends one private diagnostic
+  event; neither mode changes PF, starts probes, installs policy or arms a timer.
 - These events identify backend decisions, not every possible provider, transport,
   endpoint-change or application-routing problem. Tunnel presence is not health.
 - Automatic reconnect, arbitrary endpoint updates, IPv6, sleep/wake and boot-time
