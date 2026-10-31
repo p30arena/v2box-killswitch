@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -15,6 +16,29 @@ import test_trial
 spec = importlib.util.spec_from_file_location("trial_observer_test", Path(__file__).resolve().parents[1] / "tools/observe_first_test.py")
 observer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(observer)
+
+
+class CaptureSignalTests(unittest.TestCase):
+    def test_observer_clears_only_its_process_signal_mask(self):
+        with patch.object(observer.signal, "pthread_sigmask") as reset:
+            observer.prepare_capture_signals()
+            reset.assert_called_once_with(observer.signal.SIG_SETMASK, [])
+
+    @unittest.skipUnless(hasattr(observer.signal, "pthread_sigmask"), "POSIX signal masks required")
+    def test_capture_children_do_not_inherit_administrator_style_mask(self):
+        path = str(Path(__file__).resolve().parents[1] / "tools/observe_first_test.py")
+        code = '''
+import importlib.util, signal, subprocess, sys
+signal.pthread_sigmask(signal.SIG_SETMASK, [signal.SIGINT, signal.SIGTERM])
+spec = importlib.util.spec_from_file_location("observer_mask_test", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.prepare_capture_signals()
+child = subprocess.run([sys.executable, "-I", "-c", "import signal; assert not signal.pthread_sigmask(signal.SIG_BLOCK, [])"], timeout=5)
+assert child.returncode == 0
+'''
+        result = subprocess.run([sys.executable, "-I", "-c", code, path], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class ConfirmationTests(unittest.TestCase):

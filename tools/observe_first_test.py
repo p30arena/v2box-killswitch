@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import struct
 import subprocess
@@ -110,15 +111,23 @@ def confirm_limited_trial(config, snapshot, report):
             return True
 
 
+def prepare_capture_signals():
+    # osascript's administrator launcher blocks these signals. Inheriting its
+    # mask made tcpdump ignore shutdown/statistic signals and require SIGKILL.
+    # This changes only our own diagnostic thread and its future children.
+    signal.pthread_sigmask(signal.SIG_SETMASK, [])
+
+
 def main():
-    if os.geteuid() != 0 or sys.argv[1:] != ["--observe"]: return 1
+    if os.geteuid() != 0 or sys.argv[1:] not in (["--observe"], ["--observe-now"]): return 1
+    prepare_capture_signals()
     report = {"probes": [], "health": "unverified", "ipv6": "not_tested", "verdict": "inconclusive",
               "capture_started": False, "ipv4_tested_interfaces": [], "router_ping_by_interface": {}}
     snapshot = config = None
     captures = []
     handles = []
     try:
-        until = time.monotonic() + 900
+        until = time.monotonic() + (900 if sys.argv[1] == "--observe" else 2)
         while time.monotonic() < until:
             result = run([BACKEND, "status"])
             status = json.loads(result.stdout) if result.returncode == 0 else {}
@@ -183,7 +192,7 @@ def main():
     finally:
         for _, proc in captures:
             if proc.poll() is None:
-                proc.terminate()
+                proc.send_signal(signal.SIGINT)
                 try: proc.wait(timeout=3)
                 except subprocess.TimeoutExpired: proc.kill(); proc.wait()
         for handle in handles: handle.close()
@@ -196,8 +205,8 @@ def main():
                 for device, _ in captures:
                     rows = (TEST / ("capture-" + device + ".txt")).read_text().splitlines()
                     stderr = (TEST / ("capture-" + device + ".stderr")).read_text()
-                    dropped = re.search(r"(?m)^(\d+) packets dropped by kernel", stderr)
-                    report["capture_kernel_drops"][device] = int(dropped.group(1)) if dropped else None
+                    dropped = re.findall(r"(?m)^(\d+) packets dropped by kernel", stderr)
+                    report["capture_kernel_drops"][device] = int(dropped[-1]) if dropped else None
                     report["direct_tcp_probe_headers"] += sum(bool(re.search(r" > 1\.1\.1\.1\.44443:", row)) for row in rows)
                     report["outbound_dns_headers"] += sum(bool(re.search(r" > [^ ]+\.53:", row)) for row in rows)
                     for peer in peers:
