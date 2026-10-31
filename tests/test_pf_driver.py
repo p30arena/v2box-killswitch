@@ -57,6 +57,22 @@ class DriverTests(unittest.TestCase):
             self.assertNotIn("-F", args)
             self.assertNotIn("-d", args)
 
+    def test_unchanged_refresh_does_not_reload_or_reset_counters(self):
+        rules = compile_policy(CONFIG)
+        self.driver.replace(rules)
+        self.kernel.calls.clear()
+        self.driver.replace(rules)
+        self.assertFalse(any(args == ["-a", ANCHOR, "-f", "-"] for args, _ in self.kernel.calls))
+        self.assertTrue(any(args == ["-a", ANCHOR, "-sr"] for args, _ in self.kernel.calls))
+
+    def test_changed_rules_still_replace(self):
+        self.driver.replace(compile_policy(CONFIG))
+        self.kernel.calls.clear()
+        changed = {"physical": ["en0"], "endpoints": [{"address": "8.8.8.8", "port": 443, "protocol": "tcp"}]}
+        self.driver.replace(compile_policy(changed))
+        self.assertIn("to 8.8.8.8", self.kernel.rules)
+        self.assertEqual(sum(args == ["-a", ANCHOR, "-f", "-"] for args, _ in self.kernel.calls), 1)
+
     def test_nonquick_gate_rejected_before_update(self):
         self.kernel.root = self.kernel.root.replace(" all quick", " all")
         with self.assertRaises(ControllerError): self.driver.replace(compile_policy(CONFIG))

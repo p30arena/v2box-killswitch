@@ -1,7 +1,27 @@
-# First controlled test — prepared, not yet activated
+# First controlled test — activated, then stopped by operator
 
-The operator explicitly approved preparation and a controlled activation. The
-new backend has NOT yet enforced a live rule. Current preparation:
+## Observed result
+
+- Operator enabled through the menu; PF and backend both reported On.
+- Operator confirmed internet worked; pinned tunnel health was usable and router
+  ping succeeded. Direct TCP, public DNS and router DNS sockets failed.
+- Physical capture had no direct test TCP or outbound DNS headers; transport
+  continued. IPv6 was not tested.
+- PF counter went from 3 to 2, so counter-based proof was inconclusive. The driver
+  reloaded unchanged rules on each refresh, resetting counters. An idempotent
+  replacement fix is now offline-tested in SOURCE ONLY, not applied live.
+- Confirmation did not complete within the 180-second limit. The independent
+  timer applied quarantine at 180.8 seconds. This caused the later internet block.
+- Operator used menu Disable. Backend then reported Off and PF Disabled.
+- Test timer was unloaded. Its startup plist remains pending privileged cleanup;
+  do not reboot/re-enable for another trial without reviewing the test setup.
+
+No successful all-scenarios validation or release claim is justified by this test.
+
+## Historical preparation
+
+The operator explicitly approved preparation and a controlled activation. Before
+activation the following preparation was completed:
 
 - Fresh root-private PF backups and endpoint/socket match.
 - No PF states or skip interfaces at inspection.

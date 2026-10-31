@@ -1,9 +1,10 @@
 # Replacement status — experimental, uninstalled development kit
 
 The original release remains withdrawn. Do not install legacy scripts or plists.
-The replacement now has executable Enable/Disable/Refresh paths. An Off-state
-helper installation has been staged locally for IPC tests; no approved policy or
-PF activation was performed. It is not release-ready or a verified kill switch.
+The replacement has executable Enable/Disable/Refresh paths. One local controlled
+activation worked initially, then the unconfirmed safety timer quarantined at
+180.8 seconds; operator menu Disable restored Off. See `FIRST-TEST.md`. Protection
+was last verified Off/PF Disabled. This is not release-ready or a verified kill switch.
 
 ## Components
 
@@ -52,8 +53,9 @@ in the reviewed config is authoritative.
 
 ## Release blockers
 
-- Only Off-state helper provisioning has been performed. Administrator-authorization
-  verification, activation and packet captures are still pending for the replacement.
+- Menu authorization and one activation/Disable cycle were exercised locally;
+  IPv4 captures exist but counter verification was inconclusive. The unchanged-rule
+  reload/counter-reset fix is offline-tested source only. Full validation is pending.
 - No authenticated user-session reconnect agent integration; the menu reconnect
   operation deliberately reports unavailable.
 - Same-boot PF reset/token reconciliation is incomplete. A different-boot journal

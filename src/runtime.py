@@ -107,6 +107,13 @@ class Runtime:
         return {"physical": physical, "tunnel": tunnel, "gateways": gateways}
 
     def preflight(self):
+        if self.controller is not None:
+            backend = self.controller.backend
+            token = backend.tokens.read()  # Reject wrong-boot/corrupt journal first.
+            if token == "pending":
+                raise ControllerError("PF token acquisition is unresolved")
+            if token is not None and not backend.snapshot()["pf_enabled"]:
+                raise ControllerError("owned PF token is stale; reconciliation required")
         # Never flush established unrelated states to make activation possible.
         if self.checked(["/sbin/pfctl", "-s", "states"]).strip():
             raise ControllerError("preexisting PF states require separate review")

@@ -54,6 +54,11 @@ class PFDriver:
         expected = self._call("-n", "-v", "-a", ANCHOR, "-f", "-", text=rules)
         if not expected.strip():
             raise ControllerError("PF did not return canonical rules")
+        current = self._call("-a", ANCHOR, "-sr")
+        if current.strip() == expected.strip():
+            # Preserve packet counters and avoid needless policy churn. A live
+            # read-back, not a cached file, decides whether replacement is needed.
+            return
         self._call("-a", ANCHOR, "-f", "-", text=rules)
         observed = self._call("-a", ANCHOR, "-sr")
         if observed.strip() != expected.strip():

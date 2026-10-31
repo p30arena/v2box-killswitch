@@ -58,6 +58,18 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.runtime.dispatch("disable")["state"], "off")
         self.assertEqual(self.native.pf.rules, "")
 
+    def test_pending_token_refuses_enable_before_rule_change(self):
+        self.controller.backend.tokens.value = "pending"
+        with self.assertRaises(ControllerError): self.runtime.dispatch("enable")
+        self.assertEqual(self.native.pf.rules, "")
+        self.assertEqual(self.runtime.dispatch("status")["can_enable"], "false")
+
+    def test_disabled_pf_with_owned_token_refuses_enable_before_rule_change(self):
+        self.controller.backend.tokens.value = "12345"
+        self.native.pf.enabled = False
+        with self.assertRaises(ControllerError): self.runtime.dispatch("enable")
+        self.assertEqual(self.native.pf.rules, "")
+
     def test_existing_states_are_not_flushed_to_force_enable(self):
         self.native.states = "established unrelated state"
         with self.assertRaises(ControllerError): self.runtime.dispatch("enable")
