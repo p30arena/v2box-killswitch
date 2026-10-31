@@ -65,8 +65,10 @@ all filesystem/storage guarantees. No actual VPN command or PF mutation occurs.
 
 This file is a FENCE, not a durable child-execution witness. A ticket alone cannot
 identify, supervise or safely kill a surviving child after a helper crash. The
-future trusted supervisor must persist and reconcile its own trustworthy lifecycle
-information; missing child metadata alone is not proof that no command can start.
+[source-only witness store/EXEC gate](RECOVERY-WITNESS.md) now persists separate
+lifecycle records, but has no default trusted observer or native bridge. The future
+supervisor must independently validate and reconcile that information; missing
+child metadata alone is not proof that no command can start.
 There is deliberately no age-based expiry or automatic reconciliation API here.
 
 The broker now uses this fence only to pause NEW automatic recovery. Explicit,

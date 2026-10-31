@@ -72,8 +72,9 @@ there is no VPN executor; this mode does execute the fixed read-only fixtures.
    to signal an arbitrary process after restart.
 4. A separate matching EXEC permits resume, after another session recheck.
    A future trusted ROOT parent must independently validate and durably record
-   the child witness before sending EXEC. This diagnostic does NOT implement
-   that persistence or authenticate its pipe caller.
+   the child witness before sending EXEC. A source-only [witness store and parent
+   gate](RECOVERY-WITNESS.md) now implement persistence ordering; they are not wired
+   to this native diagnostic or an independent observer/authenticated pipe adapter.
 5. EOF, cancellation, malformed control or a two-second missing EXEC cancels and
    reaps the suspended child. A running fixture has its own two-second deadline.
    Cancellation allows up to one additional second to observe actual reaping;
@@ -118,8 +119,8 @@ No admin prompt, service registration, PF write, network probe or VPN command oc
   environment; never use the user-writable build artifact as a privileged executor.
 - Integrate the validated credential/bootstrap launch arrangement with the pinned
   worker; review audit-session details. The identity diagnostic alone is not an executor.
-- Durable supervisor/child lifecycle witness bound to the pending ticket, with
-  restart-safe reconciliation. A fence alone is not a child identity.
+- Integrate the source-only durable witness/gate with independently kernel-validated
+  observations and restart-safe reconciliation. A fence alone is not a child identity.
 - Actual fixed-command execution with ownership of every potential descendant,
   bounded cancellation, verified termination and no stale-PID signalling.
 - Shared-transaction/disabled-intent integration for EVERY intent writer and

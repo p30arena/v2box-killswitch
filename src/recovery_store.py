@@ -15,6 +15,7 @@ from controller import ControllerError
 
 MAX_BYTES = 2048
 MAX_UID = (1 << 32) - 2
+_MISSING = object()  # JSON null is corrupt, not an absent file.
 
 
 def pending_value(value):
@@ -36,6 +37,7 @@ def unique_keys(pairs):
 
 class PendingCommandStore:
     NAME = "recovery-pending.json"
+    TEMP_PREFIX = ".recovery-pending-"
 
     def __init__(self, directory, boot_id, expected_uid=0):
         if not isinstance(boot_id, str) or not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", boot_id):
@@ -57,21 +59,26 @@ class PendingCommandStore:
             raise
         return fd
 
-    def _read(self, directory_fd):
+    def _read_record(self, directory_fd):
         try:
             fd = os.open(self.NAME, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
         except FileNotFoundError:
-            return None
+            return _MISSING
         with os.fdopen(fd, "rb") as source:
             info = os.fstat(source.fileno())
             if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
                     or info.st_uid != self.expected_uid or stat.S_IMODE(info.st_mode) != 0o600):
-                raise ControllerError("unsafe recovery pending file")
+                raise ControllerError("unsafe private recovery file")
             payload = source.read(MAX_BYTES + 1)
-        if len(payload) > MAX_BYTES: raise ControllerError("oversized recovery pending record")
+        if len(payload) > MAX_BYTES: raise ControllerError("oversized private recovery record")
         try: record = json.loads(payload, object_pairs_hook=unique_keys)
         except (ValueError, UnicodeError) as error:
-            raise ControllerError("corrupt recovery pending record") from error
+            raise ControllerError("corrupt private recovery record") from error
+        return record
+
+    def _read(self, directory_fd):
+        record = self._read_record(directory_fd)
+        if record is _MISSING: return None
         if (not isinstance(record, dict) or set(record) != {"version", "boot_id", "pending"}
                 or type(record["version"]) is not int or record["version"] != 1
                 or not isinstance(record["boot_id"], str)
@@ -90,8 +97,11 @@ class PendingCommandStore:
         try: return self._read(fd)
         finally: os.close(fd)
 
-    def _replace(self, directory_fd, pending):
-        temporary = ".recovery-pending-" + uuid.uuid4().hex
+    def _replace_record(self, directory_fd, record):
+        payload = json.dumps(record, separators=(",", ":"))
+        if len(payload.encode("utf-8")) > MAX_BYTES:
+            raise ControllerError("oversized recovery record")
+        temporary = self.TEMP_PREFIX + uuid.uuid4().hex
         created = False
         try:
             fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -99,8 +109,7 @@ class PendingCommandStore:
             created = True
             with os.fdopen(fd, "w") as output:
                 os.fchmod(output.fileno(), 0o600)
-                json.dump({"version": 1, "boot_id": self.boot_id, "pending": pending},
-                          output, separators=(",", ":"))
+                output.write(payload)
                 output.flush()
                 os.fsync(output.fileno())
             os.replace(temporary, self.NAME, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
@@ -109,6 +118,9 @@ class PendingCommandStore:
             if created:
                 try: os.unlink(temporary, dir_fd=directory_fd)
                 except FileNotFoundError: pass
+
+    def _replace(self, directory_fd, pending):
+        self._replace_record(directory_fd, {"version": 1, "boot_id": self.boot_id, "pending": pending})
 
     def write(self, value):
         value = pending_value(value)  # Unconditional clearing is not supported.

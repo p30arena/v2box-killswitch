@@ -231,7 +231,7 @@ print(json.dumps(store.read()))
 
     def test_schema_corruption_and_duplicates_are_rejected(self):
         record = {"version": 1, "boot_id": "boot-one", "pending": VALUE}
-        bad = ["private provider data", "[]", json.dumps({**record, "version": True}),
+        bad = ["private provider data", "null", "[]", json.dumps({**record, "version": True}),
                json.dumps({**record, "extra": "secret"}), json.dumps({**record, "boot_id": []}),
                '{"version":1,"boot_id":"boot-one","pending":null,"pending":null}',
                '{"version":1,"boot_id":"boot-one","pending":{"ticket":"'+TICKET+'","uid":501,"uid":502}}']

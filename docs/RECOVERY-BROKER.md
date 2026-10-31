@@ -67,8 +67,10 @@ A signed user client claiming "finished" is not supervised termination proof.
 ## Remaining integration blockers
 
 1. Deploy/integrate the private pending store separately from bounded diagnostics.
-   It is only a fence, not a child-lifecycle witness. Missing witness data is NOT
-   proof that nothing can start later.
+   It is only a fence. A separate [witness store/parent EXEC gate](RECOVERY-WITNESS.md)
+   now implements source-only persistence ordering and broker completion handoff.
+   Native observations/transport and restart reconciliation are not integrated.
+   Missing witness data is NOT proof that nothing can start later.
 2. Integrate a pinned, root-owned worker with the validated
    [read-only root-to-user launch](USER-SESSION-LAUNCH.md). The
    [native worker](RECOVERY-WORKER.md) now supervises fixed read-only fixtures,
