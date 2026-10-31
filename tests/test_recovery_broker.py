@@ -15,6 +15,9 @@ class Pending:
     def __init__(self): self.value = None
     def read(self): return self.value
     def write(self, value): self.value = value
+    def clear(self, ticket, uid):
+        if self.value != {"ticket": ticket, "uid": uid}: raise ValueError("mismatched completion")
+        self.write(None)
 
 
 class BrokerTests(unittest.TestCase):

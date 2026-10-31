@@ -105,7 +105,7 @@ class RecoveryBroker:
                 return BrokerResult("reconciliation_required", action)
             if not self.complete(result, ticket, peer.uid):
                 return BrokerResult("reconciliation_required", action)
-            try: self.pending.write(None)
+            try: self.pending.clear(ticket, peer.uid)
             except Exception: return BrokerResult("reconciliation_required", action)
             return BrokerResult("completed" if result.exit_code == 0 else "command_failed", action)
 
@@ -127,6 +127,6 @@ class RecoveryBroker:
             if (not isinstance(pending, dict) or set(pending) != {"ticket", "uid"}
                     or not self.complete(supervised_completion, pending["ticket"], pending["uid"])):
                 return BrokerResult("reconciliation_required")
-            try: self.pending.write(None)
+            try: self.pending.clear(pending["ticket"], pending["uid"])
             except Exception: return BrokerResult("reconciliation_required")
             return BrokerResult("reconciled")

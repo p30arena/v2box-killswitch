@@ -38,10 +38,12 @@ register the real helper, authenticate an administrator, or change networking.
 - An explicit nonzero exit with proven termination is a command failure, not an
   unresolved running process. It permits clearing the pending ticket.
 
-Tests use fake executors, a shared thread lock, and an IN-MEMORY stand-in for the
-pending store. Threaded tests demonstrate the ordering; reconstruction tests show
-that the broker does not reset an existing fence. Neither proves crash durability
-or any macOS child-execution behavior.
+Ordering tests use fake executors, a shared thread lock and an in-memory pending
+store. Additional integration tests now use the
+[file-backed pending store](RECOVERY-STORE.md), including a fresh-process read
+and simulated interrupted writes. Threaded tests demonstrate the ordering; these
+tests do not prove power-loss durability or any macOS child-execution behavior.
+The broker clears pending state only by matching ticket AND user ID.
 
 `Peer`, `Context` and `Completion` in this model are NOT authentication primitives.
 They must eventually be constructed by trusted native/root components, never
@@ -54,8 +56,10 @@ The prototype can deliberately refuse Disable when command state is unknown.
 That is a safety specification, NOT an acceptable completed GUI recovery path.
 The installed Disable is untouched. Before any integration:
 
-1. Implement a private durable pending store (separate from bounded diagnostics),
-   persisted before any possible spawn and retained across helper failure/restart.
+1. A private file-backed pending store is now implemented in source, separate
+   from bounded diagnostics. Its root deployment and all-writer integration are
+   still required. It is not a child-lifecycle witness or a completed reconciliation
+   mechanism; do not infer termination from a missing witness.
 2. Implement a bounded, trusted supervisor that executes only fixed scutil
    operations in the correct logged-in user's credentials AND bootstrap session,
    never as root. Verify identity before exec; supervise all possible descendants.
