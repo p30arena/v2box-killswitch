@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 
+from audit import AuditJournal
 from backend_api import BackendAPI
 from controller import Controller, ControllerError, StateStore
 from coordinator import Coordinator
@@ -66,13 +67,42 @@ def read_config(directory):
 
 
 class Runtime:
-    def __init__(self, controller, runner, config_reader, now=time.time, trial_reader=None):
+    def __init__(self, controller, runner, config_reader, now=time.time, trial_reader=None, audit=None):
         self.controller = controller
         self.runner = runner
         self.config_reader = config_reader
         self.now = now
         self.trial_reader = trial_reader
         self.api = BackendAPI(controller)
+        self.audit = audit
+        self.audit_error = False
+        self.stage = "read_config"
+
+    def event(self, operation, stage, outcome, reason="none"):
+        self.stage = stage
+        if self.audit is not None:
+            try: self.audit.record(operation, stage, outcome, reason)
+            except Exception: self.audit_error = True
+
+    def diagnostic_reply(self, result):
+        result["diagnostic_recording"] = ("not_configured" if self.audit is None else
+                                          "unavailable" if self.audit_error else "available")
+        return result
+
+    def diagnostic_status(self, result):
+        if self.audit is None:
+            result["diagnostic_history"] = "not_configured"
+            return
+        try:
+            data = self.audit.read()
+            result["diagnostic_history"] = "available"
+            last = data["last_failure"]
+            if last is not None:
+                for field in ("operation", "stage", "outcome", "reason"):
+                    result["last_failure_" + field] = last[field]
+                result["last_failure_unix"] = str(last["last_unix"])
+        except Exception:
+            result["diagnostic_history"] = "unavailable"
 
     def checked(self, args):
         result = self.runner(args)
@@ -81,16 +111,20 @@ class Runtime:
         return result.stdout
 
     def snapshot(self, config):
+        self.stage = "discover_interfaces"
         ports = physical_devices(self.checked(["/usr/sbin/networksetup", "-listallhardwareports"]))
         physical = []
         for device in ports:
             text = self.checked(["/sbin/ifconfig", device])
             if re.search(r"(?m)^\s*status: active\s*$", text):
                 physical.append(device)
+        self.stage = "discover_gateways"
         gateways = discover_active(self.runner)
+        self.stage = "discover_vpn"
         status = self.checked(["/usr/sbin/scutil", "--nc", "status", config["service_uuid"]])
         tunnel = None
         if status.splitlines() and status.splitlines()[0].strip() == "Connected":
+            self.stage = "discover_tunnel"
             text = self.checked(["/sbin/ifconfig", "-v"])
             current = None
             matches = []
@@ -108,6 +142,7 @@ class Runtime:
         return {"physical": physical, "tunnel": tunnel, "gateways": gateways}
 
     def preflight(self):
+        self.stage = "check_token"
         if self.controller is not None:
             backend = self.controller.backend
             token = backend.tokens.read()  # Reject wrong-boot/corrupt journal first.
@@ -116,21 +151,33 @@ class Runtime:
             if token is not None and not backend.snapshot()["pf_enabled"]:
                 raise ControllerError("owned PF token is stale; reconciliation required")
         # Never flush established unrelated states to make activation possible.
+        self.stage = "check_states"
         if self.checked(["/sbin/pfctl", "-s", "states"]).strip():
             raise ControllerError("preexisting PF states require separate review")
+        self.stage = "check_skip"
         flags = self.checked(["/sbin/pfctl", "-s", "Interfaces", "-v"])
         if re.search(r"\bskip\b", flags, re.I):
             raise ControllerError("PF skip interfaces require separate review")
         # A legacy re-enabler ignores the new persisted Disable setting.
+        self.stage = "check_legacy"
         legacy = self.runner(["/bin/launchctl", "print", "system/com.p30arena.v2box-killswitch.refresh"])
         if legacy.returncode == 0:
             raise ControllerError("legacy PF refresher must be removed before deployment")
 
     def dispatch(self, operation):
+        self.audit_error = False
         if operation == "disable":
-            return self.api.dispatch("disable")
+            self.event(operation, "disable_enforcement", "started")
+            try:
+                result = self.api.dispatch("disable")
+            except Exception:
+                self.event(operation, "disable_enforcement", "failed", "enforcement_failed")
+                raise  # Never claim Off after an enforcement/removal failure.
+            self.event(operation, "disable_enforcement", "ok")
+            return self.diagnostic_reply(result)
         if operation == "status":
             result = self.api.dispatch("status")
+            self.diagnostic_status(result)
             if self.trial_reader is not None:
                 try:
                     trial = self.trial_reader()
@@ -165,18 +212,33 @@ class Runtime:
         if operation == "refresh" and not self.controller.store.read():
             return self.api.dispatch("status")
         try:
+            self.stage = "read_config"
             config = self.config_reader()
             base = self.snapshot(config)
             if operation == "enable":
                 self.preflight()
+                self.stage = "validate_approval"
                 approved = approved_config(base, config["inventory"], config["profile"], self.now())
-                return self.api._reply(self.controller.enable(approved))
-            # Failures never call disable: revoke stale grants via quarantine.
-            return self.api._reply(Coordinator(self.controller).update(
-                base, config["inventory"], config["profile"], self.now()))
+                self.event(operation, "enable_enforcement", "started")
+                result = self.api._reply(self.controller.enable(approved))
+                self.event(operation, "enable_enforcement", "ok")
+            else:
+                # No enforcement decisions depend on the diagnostic callback.
+                result = self.api._reply(Coordinator(self.controller,
+                    audit=lambda stage, outcome, reason: self.event(operation, stage, outcome, reason)).update(
+                        base, config["inventory"], config["profile"], self.now()))
+            return self.diagnostic_reply(result)
         except Exception:
+            self.event(operation, self.stage, "failed", "operation_failed")
             if operation == "refresh":
-                self.controller.quarantine({})
+                self.event(operation, "fallback_quarantine", "started", "runtime_failure")
+                try:
+                    quarantined = self.controller.quarantine({})
+                except Exception:
+                    self.event(operation, "fallback_quarantine", "failed", "enforcement_failed")
+                    raise
+                self.event(operation, "fallback_quarantine",
+                           "quarantined" if quarantined["state"] == "on" else "skipped_disabled", "runtime_failure")
             raise
 
 
@@ -205,14 +267,20 @@ def main():
         fd = os.open(state_dir / "runtime.lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            boot = run(["/usr/sbin/sysctl", "-n", "kern.boottime"])
-            match = re.search(r"sec\s*=\s*(\d+),\s*usec\s*=\s*(\d+)", boot.stdout)
-            if boot.returncode or not match:
-                raise ControllerError("trusted boot identity unavailable")
-            tokens = TokenStore(state_dir, ":".join(match.groups()))
-            controller = Controller(StateStore(state_dir), PFDriver(run, tokens))
-            runtime = Runtime(controller, run, lambda: read_config(DIRECTORY),
-                              trial_reader=lambda: read_trial_summary(DIRECTORY))
+            audit = AuditJournal(state_dir)
+            try:
+                boot = run(["/usr/sbin/sysctl", "-n", "kern.boottime"])
+                match = re.search(r"sec\s*=\s*(\d+),\s*usec\s*=\s*(\d+)", boot.stdout)
+                if boot.returncode or not match:
+                    raise ControllerError("trusted boot identity unavailable")
+                tokens = TokenStore(state_dir, ":".join(match.groups()))
+                controller = Controller(StateStore(state_dir), PFDriver(run, tokens))
+                runtime = Runtime(controller, run, lambda: read_config(DIRECTORY), audit=audit,
+                                  trial_reader=lambda: read_trial_summary(DIRECTORY))
+            except Exception:
+                try: audit.record("backend", "backend_init", "failed", "operation_failed")
+                except Exception: pass
+                return 1
             print(json.dumps(runtime.dispatch(sys.argv[1])))
         return 0
     except Exception:

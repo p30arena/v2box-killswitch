@@ -32,10 +32,11 @@ The original capture cannot retroactively be declared loss-free.
 ## Do not invent an outage cause
 
 The first explanation was the ten-minute quarantine timer, but cleanup found no
-`fallback-applied` marker. That explanation remains unproven. The helper also
-discards refresh failures with `try?`, so it lacks the durable incident history
-needed to distinguish transient discovery/quarantine, tunnel failure or other
-causes after the observation window. Fix that diagnostic gap before another trial.
+`fallback-applied` marker. That explanation remains unproven. At the time of the incident, the installed helper discarded refresh failures
+with `try?`, leaving no durable incident history to distinguish transient
+discovery/quarantine, tunnel failure or other causes after the observation window.
+The source now adds [private diagnostics](DIAGNOSTICS.md), but those changes are
+not deployed and do not reconstruct the missing incident history.
 
 ## Verified cleanup
 

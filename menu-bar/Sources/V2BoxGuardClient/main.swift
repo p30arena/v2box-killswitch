@@ -115,6 +115,8 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let vpn = NSMenuItem(title: "VPN health: UNKNOWN", action: nil, keyEquivalent: "")
     private let mode = NSMenuItem(title: "Policy: UNKNOWN", action: nil, keyEquivalent: "")
     private let trial = NSMenuItem(title: "Trial: not started", action: nil, keyEquivalent: "")
+    private let diagnostics = NSMenuItem(title: "Diagnostic history: unavailable", action: nil, keyEquivalent: "")
+    private let incident = NSMenuItem(title: "Recorded failure: unavailable", action: nil, keyEquivalent: "")
     private var actionInFlight = false
     private let toggle = NSMenuItem(title: "Enable Protection…", action: #selector(enableProtection), keyEquivalent: "")
     private let disable = NSMenuItem(title: "Disable Protection…", action: #selector(disableProtection), keyEquivalent: "")
@@ -130,7 +132,9 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.delegate = self
         menu.addItem(NSMenuItem(title: "V2Box Guard", action: nil, keyEquivalent: ""))
-        menu.addItem(actual); menu.addItem(mode); menu.addItem(vpn); menu.addItem(trial); menu.addItem(.separator())
+        menu.addItem(actual); menu.addItem(mode); menu.addItem(vpn); menu.addItem(trial)
+        menu.addItem(diagnostics); menu.addItem(incident); menu.addItem(.separator())
+        incident.toolTip = "Historical event; it may not describe current connectivity."
         toggle.target = self; disable.target = self; reconnect.target = self
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
         menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect); menu.addItem(.separator())
@@ -146,6 +150,35 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) { refreshStatus() }
 
+    private func showDiagnostics(_ data: [String: String]) {
+        guard data["diagnostic_history"] == "available" else {
+            diagnostics.title = "Diagnostic history: unavailable"
+            incident.title = "Recorded failure: unavailable"
+            return
+        }
+        diagnostics.title = "Diagnostic history: available"
+        let stages = [
+            "read_config": "reading approval", "discover_interfaces": "interface discovery",
+            "discover_gateways": "gateway discovery", "discover_vpn": "VPN status discovery",
+            "discover_tunnel": "tunnel identity", "check_token": "PF token check",
+            "check_states": "existing PF states", "check_skip": "PF skip check",
+            "check_legacy": "legacy service check", "validate_approval": "approval validation",
+            "enable_enforcement": "enabling protection", "disable_enforcement": "disabling protection",
+            "refresh_enforcement": "refreshing protection", "approval_quarantine": "approval quarantine",
+            "fallback_quarantine": "fallback quarantine", "backend_init": "backend initialization"
+        ]
+        let reasons = ["operation_failed": "operation failed", "approval_required": "approval needed",
+                       "policy_invalid": "invalid policy", "enforcement_failed": "enforcement failed"]
+        if data["last_failure_stage"] == nil {
+            incident.title = "Recorded failure: none recorded"
+        } else if let stage = stages[data["last_failure_stage"] ?? ""] {
+            let reason = reasons[data["last_failure_reason"] ?? ""] ?? "review needed"
+            incident.title = "Recorded failure: \(stage) — \(reason)"
+        } else {
+            incident.title = "Recorded failure: unavailable"
+        }
+    }
+
     @objc private func refreshStatus() {
         guard !actionInFlight else { return }
         requestGeneration += 1
@@ -159,6 +192,7 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.vpn.title = "VPN health: UNKNOWN"
                     self.mode.title = "Policy: UNKNOWN"
                     self.trial.title = "Trial: unavailable"
+                    self.showDiagnostics([:])
                     self.toggle.isEnabled = false
                     self.disable.isEnabled = false
                     self.reconnect.isEnabled = false
@@ -170,12 +204,14 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     guard ["on", "off", "error"].contains(state) else {
                         self.actual.title = "Protection: ERROR / UNKNOWN"
                         self.trial.title = "Trial: unavailable"
+                        self.showDiagnostics([:])
                         self.toggle.isEnabled = false
                         self.disable.isEnabled = false
                         self.reconnect.isEnabled = false
                         self.item.button?.title = "Guard !"
                         return
                     }
+                    self.showDiagnostics(data)
                     switch data["trial_verdict"] {
                     case "limited_ipv4_pass": self.trial.title = "Trial: IPv4 checks passed (limited)"
                     case "inconclusive": self.trial.title = "Trial: inconclusive — review needed"

@@ -71,6 +71,7 @@ final class GuardService: NSObject, GuardXPCProtocol {
     private let queue = DispatchQueue(label: "org.v2boxkillswitch.operations")
     private let backend = FixedBackend()
     private var timer: DispatchSourceTimer?
+    private var refreshIssue: String?
 
     override init() {
         super.init()
@@ -80,7 +81,29 @@ final class GuardService: NSObject, GuardXPCProtocol {
         timer.schedule(deadline: .now() + 10, repeating: 10)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
-            _ = try? self.backend.call("refresh")
+            var issue: String?
+            do {
+                let data = try self.backend.call("refresh")
+                if let reply = try JSONSerialization.jsonObject(with: data) as? [String: String],
+                   reply["diagnostic_recording"] == "unavailable" {
+                    issue = "diagnostics_unavailable"
+                }
+            } catch {
+                issue = "backend_unavailable"
+            }
+            // Fixed messages only: never log backend output, errors or profiles.
+            // Transition logging avoids one message every ten seconds.
+            if issue != self.refreshIssue {
+                switch issue {
+                case "backend_unavailable":
+                    NSLog("V2BoxGuard refresh unavailable; enforcement outcome unknown. Check private diagnostic history.")
+                case "diagnostics_unavailable":
+                    NSLog("V2BoxGuard refresh completed but private diagnostic recording is unavailable.")
+                default:
+                    NSLog("V2BoxGuard refresh reporting recovered; this is not a VPN health certification.")
+                }
+                self.refreshIssue = issue
+            }
         }
         timer.resume()
         self.timer = timer
