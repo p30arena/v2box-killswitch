@@ -24,7 +24,19 @@ private final class CompletionGate {
 
 final class GuardClient {
     func request(_ operation: String, enabled: Bool? = nil, completion: @escaping (Result<[String: String], Error>) -> Void) {
-        let connection = NSXPCConnection(machServiceName: serviceName, options: [])
+        guard #available(macOS 13.0, *),
+              let hash = Bundle.main.object(forInfoDictionaryKey: "GuardHelperCDHash") as? String,
+              let pin = try? PeerPin(hash) else {
+            completion(.failure(ClientError.unavailable))
+            return
+        }
+        let connection = NSXPCConnection(machServiceName: serviceName, options: .privileged)
+        do { try pin.enforce(on: connection) }
+        catch {
+            connection.invalidate()
+            completion(.failure(ClientError.unavailable))
+            return
+        }
         connection.remoteObjectInterface = NSXPCInterface(with: GuardXPCProtocol.self)
         let gate = CompletionGate()
         let finish: (Result<[String: String], Error>) -> Void = { result in

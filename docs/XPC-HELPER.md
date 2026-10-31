@@ -7,9 +7,33 @@ is not an enforcement mechanism and should not be trusted to determine PF state.
 
 ## Not implemented
 
-There is no XPC listener, privileged daemon, signed authorization requirement,
-service registration, PF backend, or authenticated caller validation. Never
-register an arbitrary listener under this name or run the client as root.
+There is no XPC listener, privileged daemon, service registration, operational PF
+backend, or authenticated caller validation. Security utilities are implemented
+but not integrated into a server. Never register an arbitrary listener under this
+name or run the client as root.
+
+## Implemented security utilities
+
+`menu-bar/Security/PeerSecurity.swift` validates exact 40-hex CDHash pins and sets
+`NSXPCConnection.setCodeSigningRequirement`, available on macOS 13+. This API is
+confirmed in the installed macOS 13.3 SDK header. An exact locally approved build
+can be pinned without a paid Developer ID account. Updates require explicit
+repinning; ad-hoc signing is not a substitute for a reviewed distribution process.
+
+The client now refuses to connect without a valid `GuardHelperCDHash` in its bundle
+metadata and pins the helper before resuming a privileged Mach-service connection.
+The package script deliberately supplies no pin: no trusted helper exists yet.
+
+ManagementAuthorization validates an external Authorization Services form and
+requires the exact custom management right. The future installer must explicitly
+register that right as authenticate-admin; UI acquisition and listener integration
+remain unfinished. No authorization rights are registered by this code. The
+helper must apply a pinned client requirement too; one-way authentication is not
+enough.
+
+`bash menu-bar/test-security.sh` compiles and runs 12 pin-parser/invalid-length
+checks. It creates no XPC connection, listener, authorization prompt or PF command.
+These checks do not validate the positive authorization flow or live peer identity.
 
 ## Required helper security review
 

@@ -7,7 +7,8 @@ SDK="${SDKROOT:-$(/usr/bin/xcrun --sdk macosx --show-sdk-path)}"
 [[ -d "$SDK/System/Library/Frameworks/AppKit.framework" ]] || { echo "Invalid macOS SDK: $SDK" >&2; exit 1; }
 mkdir -p "$APP/Contents/MacOS"
 /usr/bin/swiftc -sdk "$SDK" -module-cache-path "$ROOT/.build/manual/ModuleCache" \
-  -framework AppKit "$ROOT/Sources/V2BoxGuardClient/main.swift" \
+  -framework AppKit -framework Security "$ROOT/Security/PeerSecurity.swift" \
+  "$ROOT/Sources/V2BoxGuardClient/main.swift" \
   -o "$APP/Contents/MacOS/V2BoxGuardClient"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
