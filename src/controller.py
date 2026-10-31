@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 import tempfile
 
-from policy import compile_policy
+from policy import compile_policy, compile_quarantine
 
 
 class ControllerError(RuntimeError):
@@ -119,12 +119,18 @@ class Controller:
                 raise ControllerError("blocking anchor removal could not be verified")
             return status
 
+    def quarantine(self, config):
+        return self._refresh(config, compile_quarantine)
+
     def refresh(self, config):
+        return self._refresh(config, compile_policy)
+
+    def _refresh(self, config, compiler):
         with self.store.locked():
             if not self.store.read():
                 # No acquire, replacement, or re-enable when explicitly disabled.
                 return self._status()
-            rules = compile_policy(config)
+            rules = compiler(config)
             self.backend.replace(rules)
             self.backend.acquire()
             status = self._status()

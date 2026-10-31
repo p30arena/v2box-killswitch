@@ -46,15 +46,26 @@ def gateway_exceptions(physical, gateways):
 
 
 def compile_policy(config):
-    """Return deterministic rules; reject the entire update on invalid input.
+    """Compile approved transport rules. Missing endpoints are an error."""
+    return _compile(config, quarantine=False)
 
-    A missing tunnel yields a transport-only/default-deny policy. A missing
-    endpoint inventory is an error, not permission to retain old tunnel passes.
+
+def compile_quarantine(config):
+    """Remove tunnel, endpoint and broad LAN grants; keep validated routers.
+
+    Empty physical inventory is valid here and produces loopback + deny only.
+    Invalid router/interface snapshots must be rejected, not trusted as grants.
     """
+    safe = {"physical": config.get("physical", []),
+            "gateways": config.get("gateways", [])}
+    return _compile(safe, quarantine=True)
+
+
+def _compile(config, quarantine):
     if set(config) - {"physical", "tunnel", "endpoints", "lan", "gateways"}:
         raise PolicyError("unknown configuration field")
     physical = sorted(set(interface(x, "en") for x in config.get("physical", [])))
-    if not physical:
+    if not physical and not quarantine:
         raise PolicyError("explicit physical interface inventory required")
     gateways = gateway_exceptions(physical, config.get("gateways", []))
     tun = config.get("tunnel")
@@ -77,7 +88,7 @@ def compile_policy(config):
         if proto not in ("tcp", "udp"):
             raise PolicyError("unsupported transport")
         endpoints.add((address.version, str(address), port, proto))
-    if not endpoints:
+    if not endpoints and not quarantine:
         raise PolicyError("approved endpoints required")
 
     # Only explicit private/link-local subnets, never all RFC1918 automatically.
@@ -95,6 +106,8 @@ def compile_policy(config):
 
     rules = ["# EXPERIMENTAL OFFLINE OUTPUT — NOT VALIDATED FOR DEPLOYMENT",
              "pass out quick on lo0 all no state"]
+    if quarantine:
+        rules[1] += ' label "v2box_quarantine"'
     if tun:
         rules.append(f"pass out quick on {tun} all no state")
     for dev, version, address in gateways:

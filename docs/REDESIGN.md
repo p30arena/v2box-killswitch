@@ -8,6 +8,11 @@ The README withdrawal warning remains in effect.
 - `src/policy.py`: deterministic, interface-scoped outbound policy compiler;
   explicit numeric endpoint set, TCP/UDP and IPv6; explicit optional LAN subnets;
   exact gateway exceptions. No system operations.
+- `src/coordinator.py`: unknown/expired approval or invalid snapshots request
+  quarantine through the serialized controller, revoking endpoint/tunnel/LAN
+  grants while preserving validated router/bootstrap exceptions. Invalid router
+  data falls back to loopback + deny. Explicit Disable still wins. Tests use only
+  a fake PF kernel. No monitoring loop or live activation is provided.
 - `src/gateways.py`: read-only scoped IPv4 gateway discovery; on-link validation;
   detects an observed route change during the snapshot. No DNS or PF operations.
 - `src/endpoints.py`: explicit profile inventories with revisions and expiry;
@@ -34,7 +39,8 @@ traffic needed to retrieve that address is denied. Unrestricted DNS, HTTPS or
 process-socket discovery is not an acceptable substitute for explicit trust.
 Preapproved addresses allow rotation within that set. Changes outside that set
 need local approval or a separately authenticated, narrowly permitted bootstrap
-channel. This implementation supplies neither a trusted update channel nor an
+channel. The coordinator enters quarantine on approval failure rather than
+retaining the prior endpoint grants. This implementation supplies neither a trusted update channel nor an
 approval UI yet. It does not claim fully automatic recovery for arbitrary remote
 configuration changes.
 

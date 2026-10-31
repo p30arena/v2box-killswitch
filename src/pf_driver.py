@@ -38,7 +38,8 @@ class PFDriver:
         return {"pf_enabled": bool(re.search(r"(?m)^Status: Enabled\b", info)),
                 # Conservative: any rules left means Disable is incomplete.
                 "anchor_active": bool(rules.strip()),
-                "gate_verified": self._root_has_gate()}
+                "gate_verified": self._root_has_gate(),
+                "policy_mode": "quarantine" if 'label "v2box_quarantine"' in rules else "approved"}
 
     def replace(self, rules):
         if not self._root_has_gate():

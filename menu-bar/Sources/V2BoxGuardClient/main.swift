@@ -81,6 +81,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
     private var item: NSStatusItem!
     private let actual = NSMenuItem(title: "Protection: UNAVAILABLE", action: nil, keyEquivalent: "")
     private let vpn = NSMenuItem(title: "VPN health: UNKNOWN", action: nil, keyEquivalent: "")
+    private let mode = NSMenuItem(title: "Policy: UNKNOWN", action: nil, keyEquivalent: "")
     private let toggle = NSMenuItem(title: "Enable Protection…", action: #selector(enableProtection), keyEquivalent: "")
     private let disable = NSMenuItem(title: "Disable Protection…", action: #selector(disableProtection), keyEquivalent: "")
     private var requestGeneration = 0
@@ -93,7 +94,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
         item.button?.toolTip = "Protection state unknown until helper responds"
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "V2Box Guard", action: nil, keyEquivalent: ""))
-        menu.addItem(actual); menu.addItem(vpn); menu.addItem(.separator())
+        menu.addItem(actual); menu.addItem(mode); menu.addItem(vpn); menu.addItem(.separator())
         toggle.target = self; disable.target = self; reconnect.target = self
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
         menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect); menu.addItem(.separator())
@@ -115,6 +116,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
                 case .failure(let error):
                     self.actual.title = "Protection: ERROR / UNKNOWN"
                     self.vpn.title = "VPN health: UNKNOWN"
+                    self.mode.title = "Policy: UNKNOWN"
                     self.toggle.isEnabled = false
                     self.disable.isEnabled = false
                     self.reconnect.isEnabled = false
@@ -133,6 +135,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
                     }
                     self.actual.title = "Protection: \(state.uppercased())"
                     self.vpn.title = "VPN health: \(health.uppercased())"
+                    self.mode.title = data["policy_mode"] == "quarantine"
+                        ? "Policy: QUARANTINE — approval required"
+                        : "Policy: \((data["policy_mode"] ?? "unknown").uppercased())"
                     self.toggle.title = "Enable Protection…"
                     // Enable must remain disabled until locally approved policy is
                     // available in the helper. Status reply can explicitly grant it.
