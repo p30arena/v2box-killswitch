@@ -31,3 +31,13 @@ Output: `menu-bar/.build/V2BoxGuardPreview.app`. This is visibly DEMO and still
 has simulated controls only.
 
 The privileged controller described in `../docs/MENU-BAR.md` remains unimplemented.
+
+An unprivileged XPC-client shell can be packaged with:
+
+```sh
+bash menu-bar/package-client.sh
+```
+
+Its buttons remain disabled and status reports UNKNOWN/ERROR because no helper
+service exists. It is not operational control and does not inspect actual PF state.
+See [`../docs/XPC-HELPER.md`](../docs/XPC-HELPER.md).

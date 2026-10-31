@@ -16,8 +16,9 @@ The README withdrawal warning remains in effect.
 - `src/controller.py`: durable enabled/disabled intent, interprocess lock,
   serialized refresh/disable, read-back status through an injected backend.
   Tests use a fake PF backend only. No operational PF backend is supplied.
-- `menu-bar/`: native Swift/AppKit preview, builds with direct swiftc invocation.
-  Controls are simulated and labelled DEMO. Not connected to controller.
+- `menu-bar/`: native Swift/AppKit preview and an unprivileged XPC client shell.
+  Preview controls are simulated; client reports ERROR/UNKNOWN and disables actions
+  with no helper. Neither is connected to operational PF controls.
 
 ## Endpoint changes: important unresolved constraint
 
@@ -32,9 +33,9 @@ configuration changes.
 
 ## Deployment blockers
 
-1. Authenticated privileged helper + signed native UI integration. Validate the
-   authorization and signing design on each supported macOS release. Do not use
-   a world-writable socket, arbitrary shell input, or unrestricted root scripting.
+1. Authenticated privileged helper + signed native UI integration (see
+   `XPC-HELPER.md`). Only the client shell exists. Validate authorization and
+   signing on each supported macOS release. No arbitrary shell input.
 2. Real PF backend: verify anchor ordering/reachability, atomic updates, owned
    PF reference token persistence/release, read-back and only-project removal.
    Handle preexisting PF states and unrelated filters; no global flush/disabling.
