@@ -55,7 +55,8 @@ in the reviewed config is authoritative.
 
 - Menu authorization and one activation/Disable cycle were exercised locally;
   IPv4 captures exist but counter verification was inconclusive. The unchanged-rule
-  reload/counter-reset fix is offline-tested source only. Full validation is pending.
+  reload/counter-reset fix passed offline tests and is installed with protection
+  kept Off. Active enforcement retest and full validation are pending.
 - No authenticated user-session reconnect agent integration; the menu reconnect
   operation deliberately reports unavailable.
 - Same-boot PF reset/token reconciliation is incomplete. A different-boot journal

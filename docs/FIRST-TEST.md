@@ -9,12 +9,14 @@
   continued. IPv6 was not tested.
 - PF counter went from 3 to 2, so counter-based proof was inconclusive. The driver
   reloaded unchanged rules on each refresh, resetting counters. An idempotent
-  replacement fix is now offline-tested in SOURCE ONLY, not applied live.
+  replacement fix passed offline tests and was subsequently installed while Off;
+  active enforcement with that fix has not yet been retested.
 - Confirmation did not complete within the 180-second limit. The independent
   timer applied quarantine at 180.8 seconds. This caused the later internet block.
 - Operator used menu Disable. Backend then reported Off and PF Disabled.
-- Test timer was unloaded. Its startup plist remains pending privileged cleanup;
-  do not reboot/re-enable for another trial without reviewing the test setup.
+- Test timer was unloaded and its startup plist subsequently archived/removed.
+  The trial's approved policy was archived, not deleted. Enable is unavailable
+  until a fresh test policy and safety plan are prepared.
 
 No successful all-scenarios validation or release claim is justified by this test.
 
