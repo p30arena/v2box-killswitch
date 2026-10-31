@@ -6,7 +6,8 @@ New source files:
 - `menu-bar/Security/RecoveryPeer.swift`: accepted-XPC-connection role policy.
 
 Neither is integrated into the installed helper, a recovery runner or the worker's
-stdin/stdout control channel. No new service, endpoint or command is exported.
+stdin/stdout control channel. A separate [read-only handoff](RECOVERY-HANDOFF.md)
+uses the connection policy in tests; the installed helper exports no new API.
 
 ## Prelaunch artifact policy
 
@@ -100,6 +101,8 @@ XPC endpoints must be transferred through an IPC mechanism that carries Mach por
 rights; serializing an endpoint's archive to ordinary pipe bytes is not by itself
 a valid cross-process capability transfer.
 
-No worker listener or helper rendezvous was added here. Any deployment or live
+A read-only endpoint handoff and build-only cross-process diagnostic harness now
+exist separately; the cross-process app/service is not yet launched. No production
+worker listener or helper rendezvous is integrated. Any deployment or live
 protection/recovery trial remains subject to separate approval. Installed diagnostic
 app/helper, protection settings and trial-timer absence are untouched.
