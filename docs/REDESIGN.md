@@ -5,10 +5,14 @@ The README withdrawal warning remains in effect.
 
 ## Implemented and offline-tested
 
+- `src/health.py`: pinned HTTPS target probe with an injected runner, explicit
+  tunnel binding, no DNS/proxy/redirects/curlrc and pre/post ownership checks.
+  Only fake-runner tests so far; no real probes or interface-binding proof.
+  Unsupported curl/configuration errors return unverified, not unhealthy.
 - `src/recovery.py`: fake-clock-tested recovery state machine with bounded retry
   bursts, exponential backoff/cooldown, transition timeout and repeated unusable
   health evidence. No restarts on merely unverified health; networking actions
-  require fresh verified enforcement. No daemon or health probes supplied.
+  require fresh verified enforcement. No daemon or probe integration supplied.
 - `src/vpn_commands.py`: UUID-only native scutil adapter with injected runner and
   command deadlines. Tested only with fake commands; not executed on this Mac.
 - `src/policy.py`: deterministic, interface-scoped outbound policy compiler;
@@ -67,7 +71,8 @@ configuration changes.
    appearing healthy when approval or bootstrap is unavailable.
 6. IPv6 gateway discovery and real DHCP renewal/ND tests. The draft compiler's
    bootstrap rules do not yet cover every renewal or network topology.
-7. Integrate serialized recovery with a real interface-bound health probe,
+7. Validate the draft health probe's binding with packet captures and integrate
+   serialized recovery with current provider-identity checks,
    privacy-safe transition logging, user-session native command permissions, and
    preservation of backoff across service restarts. Then run packet captures
    on supported macOS versions, with health tests, endpoint

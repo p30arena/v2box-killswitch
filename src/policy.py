@@ -79,7 +79,7 @@ def _compile(config, quarantine):
             address = ipaddress.ip_address(entry["address"])
         except ValueError as exc:
             raise PolicyError("endpoint must be a numeric IP; DNS bootstrap is not implemented") from exc
-        if not address.is_global or getattr(address, "ipv4_mapped", None):
+        if not address.is_global or address.is_multicast or getattr(address, "ipv4_mapped", None):
             raise PolicyError("endpoint must be global unicast")
         port = entry["port"]
         if type(port) is not int or not 1 <= port <= 65535:
