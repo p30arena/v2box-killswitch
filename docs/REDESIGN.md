@@ -5,6 +5,12 @@ The README withdrawal warning remains in effect.
 
 ## Implemented and offline-tested
 
+- `src/recovery.py`: fake-clock-tested recovery state machine with bounded retry
+  bursts, exponential backoff/cooldown, transition timeout and repeated unusable
+  health evidence. No restarts on merely unverified health; networking actions
+  require fresh verified enforcement. No daemon or health probes supplied.
+- `src/vpn_commands.py`: UUID-only native scutil adapter with injected runner and
+  command deadlines. Tested only with fake commands; not executed on this Mac.
 - `src/policy.py`: deterministic, interface-scoped outbound policy compiler;
   explicit numeric endpoint set, TCP/UDP and IPv6; explicit optional LAN subnets;
   exact gateway exceptions. No system operations.
@@ -61,7 +67,10 @@ configuration changes.
    appearing healthy when approval or bootstrap is unavailable.
 6. IPv6 gateway discovery and real DHCP renewal/ND tests. The draft compiler's
    bootstrap rules do not yet cover every renewal or network topology.
-7. Packet captures on supported macOS versions, with health tests, endpoint
+7. Integrate serialized recovery with a real interface-bound health probe,
+   privacy-safe transition logging, user-session native command permissions, and
+   preservation of backoff across service restarts. Then run packet captures
+   on supported macOS versions, with health tests, endpoint
    changes, profile switching, sleep/wake, watchdog failures, and boot timing.
    Never claim protection across boot before measurement.
 
