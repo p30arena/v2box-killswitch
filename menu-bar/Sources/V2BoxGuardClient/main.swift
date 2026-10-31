@@ -69,7 +69,7 @@ final class GuardClient {
         }
         switch operation {
         case "status": proxy.status(reply)
-        case "toggle":
+        case "toggle", "authorization":
             guard let authorization else {
                 finish(.failure(ClientError.rejected("Administrator authorization is required.")))
                 return
@@ -81,11 +81,15 @@ final class GuardClient {
                 guard error == nil, let data,
                       let object = try? JSONSerialization.jsonObject(with: data),
                       let status = object as? [String: String],
-                      status[(enabled == true) ? "can_enable" : "can_disable"] == "true" else {
+                      (operation == "authorization" || status[(enabled == true) ? "can_enable" : "can_disable"] == "true") else {
                     finish(.failure(ClientError.rejected("Helper did not confirm this operation is available.")))
                     return
                 }
-                proxy.setProtectionEnabled(enabled ?? false, authorization: authorization, reply: reply)
+                if operation == "authorization" {
+                    proxy.checkAuthorization(authorization, reply: reply)
+                } else {
+                    proxy.setProtectionEnabled(enabled ?? false, authorization: authorization, reply: reply)
+                }
             }
         case "reconnect": proxy.reconnectVPN(reply)
         default: finish(.failure(ClientError.unavailable))
@@ -126,6 +130,8 @@ final class MenuController: NSObject, NSApplicationDelegate {
         toggle.target = self; disable.target = self; reconnect.target = self
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
         menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect); menu.addItem(.separator())
+        let authorize = NSMenuItem(title: "Verify Administrator Access…", action: #selector(verifyAuthorization), keyEquivalent: "")
+        authorize.target = self; menu.addItem(authorize)
         let refresh = NSMenuItem(title: "Refresh Status", action: #selector(refreshStatus), keyEquivalent: "r")
         refresh.target = self; menu.addItem(refresh)
         let quit = NSMenuItem(title: "Quit (does not change protection)", action: #selector(quitApp), keyEquivalent: "q")
@@ -179,6 +185,32 @@ final class MenuController: NSObject, NSApplicationDelegate {
                 }
             }
         }
+    }
+
+    @objc private func verifyAuthorization() {
+        do {
+            let session = try AuthorizationSession()
+            client.request("authorization", authorization: session.externalData) { [weak self, session] result in
+                withExtendedLifetime(session) {
+                    DispatchQueue.main.async {
+                        let alert = NSAlert()
+                        switch result {
+                        case .success(let data) where data["authorized"] == "true":
+                            alert.messageText = "Administrator access verified"
+                            alert.informativeText = "The helper accepted authorization. No firewall change was requested."
+                        case .failure(let error):
+                            alert.messageText = "Authorization not verified"
+                            alert.informativeText = error.localizedDescription
+                        default:
+                            alert.messageText = "Authorization not verified"
+                            alert.informativeText = "Unexpected helper response. No firewall change was requested."
+                        }
+                        alert.addButton(withTitle: "OK"); alert.runModal()
+                        self?.refreshStatus()
+                    }
+                }
+            }
+        } catch { actionFinished(.failure(error)) }
     }
 
     @objc private func enableProtection() { changeProtection(enable: true) }

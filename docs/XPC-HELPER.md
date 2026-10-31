@@ -5,8 +5,10 @@ Client: `menu-bar/Sources/V2BoxGuardClient/main.swift`.
 Helper: `menu-bar/Sources/V2BoxGuardHelper/main.swift`.
 Backend: isolated zipapp built from `src/runtime.py` and its local modules.
 
-No component is installed or running. Standalone client packaging supplies no
-helper pin; the full development-kit builder signs/pins both artifacts locally.
+Building does not install or run components. The explicit Off-state installer can
+register the helper for IPC tests, separately from firewall activation. Standalone
+client packaging supplies no helper pin; the full development-kit builder
+signs/pins both artifacts locally.
 
 ## Authentication and authorization
 
@@ -29,6 +31,7 @@ The provisioning utility is NOT run by build scripts.
 ## Operations
 
 - Status: fixed backend argument `status`; actual read-back or error/unknown.
+- Verify Administrator Access: validates management authorization only; no PF call.
 - Enable/Disable: management authorization required; fixed backend arguments only.
 - Refresh: helper serial timer every ten seconds; backend checks persistent intent
   so it cannot undo Disable. Refresh and user actions share serialization.

@@ -17,13 +17,28 @@ Requires macOS 13+, installed Command Line Tools/Python 3, Swift and codesign.
 Menu Enable/Disable -> admin authorization -> pinned XPC helper -> fixed root
 backend executable -> serialized controller -> scoped PF driver -> kernel read-back.
 The helper's ten-second refresh calls the same backend and respects Disable intent.
-These paths are implemented, but positive IPC/authentication and actual firewall
-behavior have NOT been tested. Calling them operationally verified would be false.
+These paths are implemented. An Off-only installation can load the helper and
+open the client without a policy or PF activation. Positive administrator
+verification and actual firewall behavior must be tested separately; do not call
+the kill switch operationally verified from an Off-state service check.
 
 ## Prerequisites for a separately approved installation
 
 Do not execute an installation on the development Mac without explicit approval.
-There is intentionally no automatic installer while live validation is pending.
+`tools/install_helper_off.py --install-off` is an explicit root installer for
+Off-state IPC testing only. It refuses existing paths, creates disabled intent,
+registers the management right, installs/loads the helper, and installs NO policy
+or PF gate. It is never invoked by builds. It requires separate administrator
+approval. The client is placed in the root-owned project support directory rather
+than a potentially administrator-writable Applications directory.
+
+Use the menu's **Verify Administrator Access…** action to test authorization
+without requesting a PF change. Enabling enforcement remains a separate approval.
+
+For an Off-only test removal, first quit the menu app; the explicit root utility
+`tools/remove_helper_off.py --remove-off-install` refuses a configured installation
+or loaded project PF rules. It unloads only the new helper and removes its known
+files/right. It does not disable or flush PF. The removal utility is untested live.
 
 A reviewed installer would need to:
 

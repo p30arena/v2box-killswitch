@@ -93,6 +93,17 @@ final class GuardService: NSObject, GuardXPCProtocol {
         }
     }
 
+    func checkAuthorization(_ authorization: Data, reply: @escaping (Data?, String?) -> Void) {
+        queue.async {
+            do {
+                try ManagementAuthorization.verify(authorization)
+                reply(try JSONSerialization.data(withJSONObject: ["authorized": "true"]), nil)
+            } catch {
+                reply(nil, "Administrator authorization was not accepted. No firewall operation requested.")
+            }
+        }
+    }
+
     func setProtectionEnabled(_ enabled: Bool, authorization: Data,
                               reply: @escaping (Data?, String?) -> Void) {
         queue.async {

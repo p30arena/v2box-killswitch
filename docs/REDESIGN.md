@@ -1,8 +1,9 @@
 # Replacement status — experimental, uninstalled development kit
 
 The original release remains withdrawn. Do not install legacy scripts or plists.
-The replacement now has executable Enable/Disable/Refresh paths, but has NOT been
-installed or end-to-end tested. It is not release-ready or a verified kill switch.
+The replacement now has executable Enable/Disable/Refresh paths. An Off-state
+helper installation has been staged locally for IPC tests; no approved policy or
+PF activation was performed. It is not release-ready or a verified kill switch.
 
 ## Components
 
@@ -51,8 +52,8 @@ in the reviewed config is authoritative.
 
 ## Release blockers
 
-- No installation, activation, live authorization/pinned-peer handshake or packet
-  captures have been performed for the replacement.
+- Only Off-state helper provisioning has been performed. Administrator-authorization
+  verification, activation and packet captures are still pending for the replacement.
 - No authenticated user-session reconnect agent integration; the menu reconnect
   operation deliberately reports unavailable.
 - Same-boot PF reset/token reconciliation is incomplete. A different-boot journal

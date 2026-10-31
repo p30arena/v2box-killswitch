@@ -14,7 +14,8 @@ class BackendAPI:
         return {"state": status.get("state", "error"),
                 "policy_mode": status.get("policy_mode", "unknown"),
                 "vpn_health": "unverified",
-                "can_enable": "false", "can_disable": "true", "can_reconnect": "false"}
+                "can_enable": "false", "can_disable": "false" if status.get("state") == "off" else "true",
+                "can_reconnect": "false"}
 
     def dispatch(self, operation):
         if operation == "status":
