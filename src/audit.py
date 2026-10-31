@@ -11,14 +11,18 @@ import stat
 import tempfile
 import time
 
-OPERATIONS = {"enable", "disable", "refresh", "backend"}
+OPERATIONS = {"enable", "disable", "refresh", "backend", "trial_timer"}
 STAGES = {"read_config", "discover_interfaces", "discover_gateways", "discover_vpn",
           "discover_tunnel", "check_token", "check_states", "check_skip", "check_legacy",
           "validate_approval", "enable_enforcement", "disable_enforcement",
-          "refresh_enforcement", "approval_quarantine", "fallback_quarantine", "backend_init"}
+          "refresh_enforcement", "approval_quarantine", "fallback_quarantine", "backend_init",
+          "trial_wait", "trial_deadline", "trial_syntax", "trial_disable_intent",
+          "trial_apply_quarantine", "trial_marker", "diagnostic_preflight"}
 OUTCOMES = {"started", "ok", "failed", "quarantined", "skipped_disabled"}
 REASONS = {"none", "operation_failed", "approval_required", "policy_invalid",
-           "enforcement_failed", "runtime_failure", "disabled_intent", "tunnel_present", "tunnel_absent"}
+           "enforcement_failed", "runtime_failure", "disabled_intent", "tunnel_present", "tunnel_absent",
+           "activation_timeout", "confirmation_present", "confirmation_missing"}
+DIAGNOSTIC_CAPABILITY = "backend_and_trial_timer_v1"
 MAX_EVENTS = 128
 MAX_BYTES = 65536
 KEYS = {"sequence", "operation", "stage", "outcome", "reason", "first_unix", "last_unix", "count"}

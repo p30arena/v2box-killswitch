@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-from audit import AuditJournal
+from audit import AuditJournal, DIAGNOSTIC_CAPABILITY
 from backend_api import BackendAPI
 from controller import Controller, ControllerError, StateStore
 from coordinator import Coordinator
@@ -96,6 +96,7 @@ class Runtime:
         try:
             data = self.audit.read()
             result["diagnostic_history"] = "available"
+            result["diagnostic_capability"] = DIAGNOSTIC_CAPABILITY
             last = data["last_failure"]
             if last is not None:
                 for field in ("operation", "stage", "outcome", "reason"):

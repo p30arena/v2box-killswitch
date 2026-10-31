@@ -165,7 +165,11 @@ final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "check_legacy": "legacy service check", "validate_approval": "approval validation",
             "enable_enforcement": "enabling protection", "disable_enforcement": "disabling protection",
             "refresh_enforcement": "refreshing protection", "approval_quarantine": "approval quarantine",
-            "fallback_quarantine": "fallback quarantine", "backend_init": "backend initialization"
+            "fallback_quarantine": "fallback quarantine", "backend_init": "backend initialization",
+            "trial_wait": "test timer wait", "trial_deadline": "test deadline",
+            "trial_syntax": "timer quarantine syntax", "trial_disable_intent": "timer recording Off",
+            "trial_apply_quarantine": "timer loading quarantine", "trial_marker": "timer marker write",
+            "diagnostic_preflight": "diagnostic write check"
         ]
         let reasons = ["operation_failed": "operation failed", "approval_required": "approval needed",
                        "policy_invalid": "invalid policy", "enforcement_failed": "enforcement failed"]

@@ -55,6 +55,28 @@ The source helper no longer silently discards refresh errors. It emits fixed,
 transition-only unified-log messages for unavailable backend calls, unavailable
 diagnostic recording, and reporting recovery. Recovery is not a health certificate.
 
+## Independent timer coverage
+
+The source timer now uses the same private journal and runtime-lock ordering.
+It records confirmation/Disable exits, activation timeout, deadline expiry,
+syntax validation, persisted Off intent, quarantine command completion and marker
+writing as distinct phases. A command's `ok` event means it returned successfully;
+it is not independent verification of kernel enforcement or VPN health.
+
+Fake-clock/fake-PF tests exercise ten-minute expiry without waiting or touching
+networking. They cover confirmation and Disable at the deadline boundary, syntax
+and apply failures, logging failures, and a marker failure AFTER a successful
+quarantine command. Thus missing `fallback-applied` alone cannot rule out a timer
+write. This does not establish that the historical outage used that failure path.
+
+Future preparation refuses an older/mismatched diagnostics capability and requires
+an actual atomic journal append under the runtime lock, rechecking Off intent,
+before discovery or timer/policy staging. Readability alone is insufficient.
+
+Deadline behavior is NOT changed: an unconfirmed active trial still quarantines
+after ten minutes. No timer is currently armed; this instrumentation is not
+permission to repeat a live trial or silently treat inconclusive evidence as pass.
+
 ## Limits before another trial
 
 - No new deployment or trial has been authorized/prepared by this change.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Prepare, but NEVER enable, a first controlled firewall test. Explicit root only."""
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -31,6 +32,23 @@ def atomic(path, text, mode):
         if os.path.exists(temporary): os.unlink(temporary)
 
 
+def check_diagnostics():
+    backend = json.loads(command(["/Library/PrivilegedHelperTools/org.v2boxkillswitch.backend", "status"]).stdout)
+    if (backend.get("state") != "off" or backend.get("diagnostic_history") != "available"
+            or backend.get("diagnostic_capability") != "backend_and_trial_timer_v1"):
+        raise RuntimeError("matching readable backend/timer diagnostics required; no trial staged")
+    sys.path.insert(0, "/Library/PrivilegedHelperTools/org.v2boxkillswitch.backend")
+    from audit import AuditJournal
+    fd = os.open(BASE / "state/runtime.lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as outer:
+        fcntl.flock(outer, fcntl.LOCK_EX)
+        if json.loads((BASE / "state/intent.json").read_text()) != {"version": 1, "enabled": False}:
+            raise RuntimeError("intent changed; refusing diagnostic preflight")
+        # Readability is not proof that recording works. Require an actual
+        # private atomic append before any trial timer or policy is staged.
+        AuditJournal(BASE / "state").record("backend", "diagnostic_preflight", "ok")
+
+
 def main():
     if os.geteuid() != 0 or sys.argv[1:] != ["--prepare-only"]:
         raise RuntimeError("root and --prepare-only required")
@@ -38,6 +56,7 @@ def main():
         raise RuntimeError("previous policy/test exists; refusing overwrite")
     intent = json.loads((BASE / "state/intent.json").read_text())
     if intent != {"version": 1, "enabled": False}: raise RuntimeError("intent must be OFF")
+    check_diagnostics()
     result = command(["/usr/bin/python3", "-I", str(ROOT / "tools/inspect_before_activation.py")])
     facts = json.loads(result.stdout)
     if facts["pf_enabled"] or facts["existing_state_count"] or facts["skip_flags_present"]:

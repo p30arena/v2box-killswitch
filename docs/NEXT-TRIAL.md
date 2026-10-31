@@ -1,7 +1,9 @@
 # Revised trial workflow — limited IPv4 checks only
 
-Prepared after the first trial's operator-triggered Disable. PF remains Disabled
-until an explicit menu Enable action. Old evidence was archived, not deleted.
+This describes the revised workflow used for the second trial, subsequently
+stopped by the operator. No next trial is currently prepared. See
+[TRIAL-2-REVIEW.md](TRIAL-2-REVIEW.md) and [DIAGNOSTICS.md](DIAGNOSTICS.md).
+PF remains Disabled; old evidence was archived, not deleted.
 
 ## Avoid dependence on chat timing
 
