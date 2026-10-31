@@ -99,7 +99,9 @@ final class GuardService: NSObject, GuardXPCProtocol {
                 try ManagementAuthorization.verify(authorization)
                 reply(try JSONSerialization.data(withJSONObject: ["authorized": "true"]), nil)
             } catch {
-                reply(nil, "Administrator authorization was not accepted. No firewall operation requested.")
+                let detail = (error as? PeerSecurityError)?.safeDiagnostic ?? "Authorization check failed."
+                NSLog("V2BoxGuard authorization-only check: %@", detail)
+                reply(nil, detail + " No firewall operation requested.")
             }
         }
     }

@@ -22,10 +22,14 @@ form, the client requires a signed status response on the SAME connection.
 
 UI protection changes obtain `org.v2boxkillswitch.manage` through Authorization
 Services, externalize the authorization form, and retain it until reply/timeout.
-The helper reconstructs and checks the exact granted right without interactive
-extension. It never accepts raw PF rules, paths or server configuration through
+The helper reconstructs the form and re-evaluates the exact granted right with
+ExtendRights but WITHOUT InteractionAllowed. It cannot prompt or bypass a missing
+credential. It never accepts raw PF rules, paths or server configuration through
 IPC. A separately compiled root provisioning utility can register only that custom
-right as authenticate-admin; it refuses to overwrite an existing definition.
+right as authenticate-user/admin, allow-root false, non-shared, with a 60-second
+lifetime. UI sessions destroy the right after each operation. An explicit migration
+can replace only the known legacy project definition, backing it up first; unrelated
+rights and Apple's authenticate-admin rule are never modified.
 The provisioning utility is NOT run by build scripts.
 
 ## Operations

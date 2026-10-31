@@ -64,8 +64,9 @@ A reviewed installer would need to:
    Do not load legacy static rules. Syntax-check the entire proposed config first.
    Reloading global PF config itself is disruptive and requires separate approval.
 6. Review/run `RegisterManagementRight --register-management-right` as root to
-   register only the custom authenticate-admin right. It refuses to overwrite an
-   existing right; do not weaken an existing rule to bypass a failed check.
+   register only the custom, non-shared authenticate-user/admin right with a
+   60-second lifetime. It refuses arbitrary overwrite; an explicit migration is
+   available for the known legacy project rule. See `AUTHORIZATION-FIX.md`.
 7. Install/validate the LaunchDaemon plist with the expected Mach service and
    paths. Registration, first service startup, and app launch are separate approved
    steps. Before first Enable, arm an independent local recovery mechanism.

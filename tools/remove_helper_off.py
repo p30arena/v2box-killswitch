@@ -37,8 +37,12 @@ def main():
     run(["/bin/launchctl", "bootout", "system/org.v2boxkillswitch.helper"])
     right = run(["/usr/bin/security", "authorizationdb", "read", "org.v2boxkillswitch.manage"])
     definition = plistlib.loads(right.stdout.encode())
+    legacy = definition.get("class") == "rule" and definition.get("rule") == ["authenticate-admin"]
+    current = (definition.get("class") == "user" and definition.get("group") == "admin"
+               and definition.get("authenticate-user") is True and definition.get("allow-root") is False
+               and definition.get("shared") is False and definition.get("timeout") == 60)
     if (definition.get("comment") != "Authorize a V2Box Guard protection change"
-            or definition.get("rule") != ["authenticate-admin"]):
+            or not (legacy or current)):
         raise RuntimeError("management right changed; service stopped, manual review required")
     run(["/usr/bin/security", "authorizationdb", "remove", "org.v2boxkillswitch.manage"])
     for path in FILES:

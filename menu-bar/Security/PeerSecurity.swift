@@ -8,6 +8,18 @@ enum PeerSecurityError: Error {
     case invalidRequirement
     case malformedAuthorization
     case authorizationDenied(OSStatus)
+    case verificationFailed(String, OSStatus)
+
+    var safeDiagnostic: String {
+        switch self {
+        case .invalidPin: return "Invalid peer pin."
+        case .invalidRequirement: return "Invalid peer signing requirement."
+        case .malformedAuthorization: return "Authorization form has the wrong length."
+        case .authorizationDenied(let status): return "Authorization request failed (OSStatus \(status))."
+        case .verificationFailed(let stage, let status):
+            return "Authorization verification failed at \(stage) (OSStatus \(status))."
+        }
+    }
 }
 
 struct PeerPin {
@@ -55,7 +67,7 @@ final class AuthorizationSession {
             return withUnsafeMutablePointer(to: &item) { pointer in
                 var rights = AuthorizationRights(count: 1, items: pointer)
                 return AuthorizationCopyRights(ref, &rights, nil,
-                    [.interactionAllowed, .extendRights, .preAuthorize], nil)
+                    [.interactionAllowed, .extendRights], nil)
             }
         }
         guard status == errAuthorizationSuccess else {
@@ -76,8 +88,8 @@ final class AuthorizationSession {
 }
 
 struct ManagementAuthorization {
-    // The installer must define this right as authenticate-admin. Never replace
-    // an existing rule automatically. No installer/right registration is shipped.
+    // Provision as our own authenticate-user/admin right, non-shared, timeout 60.
+    // Do not delegate to authenticate-admin's zero-timeout rule or weaken it.
     static let right = "org.v2boxkillswitch.manage"
 
     static func verify(_ externalData: Data) throws {
@@ -91,28 +103,43 @@ struct ManagementAuthorization {
         var reference: AuthorizationRef?
         let created = AuthorizationCreateFromExternalForm(&external, &reference)
         guard created == errAuthorizationSuccess, let reference else {
-            throw PeerSecurityError.authorizationDenied(created)
+            throw PeerSecurityError.verificationFailed("external-form reconstruction", created)
         }
         defer { AuthorizationFree(reference, []) }
+        var verificationStage = "copy-rights"
         let checked = right.withCString { name -> OSStatus in
             var item = AuthorizationItem(name: name, valueLength: 0, value: nil, flags: 0)
             return withUnsafeMutablePointer(to: &item) { pointer in
                 var rights = AuthorizationRights(count: 1, items: pointer)
-                // No interaction or extension in the helper. The authenticated
-                // UI must already have obtained the exact management right.
+                // Re-evaluate the exact requested right on the externalized
+                // authorization. ExtendRights is required after reconstruction;
+                // InteractionAllowed is deliberately NOT set, so the helper
+                // cannot prompt or grant a missing admin credential silently.
                 var granted: UnsafeMutablePointer<AuthorizationRights>?
-                let status = AuthorizationCopyRights(reference, &rights, nil, [], &granted)
+                let status = AuthorizationCopyRights(reference, &rights, nil, [.extendRights], &granted)
                 guard status == errAuthorizationSuccess else { return status }
-                guard let granted else { return errAuthorizationDenied }
+                guard let granted else {
+                    verificationStage = "missing granted-rights result"
+                    return errAuthorizationDenied
+                }
                 defer { AuthorizationFreeItemSet(granted) }
-                guard granted.pointee.count == 1, let items = granted.pointee.items,
-                      String(cString: items.pointee.name) == right,
-                      items.pointee.flags == 0 else { return errAuthorizationDenied }
+                guard granted.pointee.count == 1, let items = granted.pointee.items else {
+                    verificationStage = "granted-right count \(granted.pointee.count)"
+                    return errAuthorizationDenied
+                }
+                guard String(cString: items.pointee.name) == right else {
+                    verificationStage = "granted-right name mismatch"
+                    return errAuthorizationDenied
+                }
+                guard items.pointee.flags == 0 else {
+                    verificationStage = "granted-right flags \(items.pointee.flags)"
+                    return errAuthorizationDenied
+                }
                 return errAuthorizationSuccess
             }
         }
         guard checked == errAuthorizationSuccess else {
-            throw PeerSecurityError.authorizationDenied(checked)
+            throw PeerSecurityError.verificationFailed(verificationStage, checked)
         }
     }
 }
