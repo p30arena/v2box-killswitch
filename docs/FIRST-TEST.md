@@ -1,5 +1,8 @@
 # First controlled test — activated, then stopped by operator
 
+This file records the historical first trial. For the revised workflow, see
+[NEXT-TRIAL.md](NEXT-TRIAL.md); its local confirmation and timeout differ.
+
 ## Observed result
 
 - Operator enabled through the menu; PF and backend both reported On.
@@ -33,7 +36,7 @@ activation the following preparation was completed:
 - Current matched endpoint approved for a 24-hour TEST inventory, not indefinitely.
 - Independent root safety timer armed; a diagnostic observer waits for activation.
 
-## Interactive activation
+## Interactive activation (historical first trial)
 
 Use the menu Enable action, not an unreviewed shell command. Do not disconnect
 V2Box during this first test. Observe whether ordinary internet continues and
@@ -51,7 +54,7 @@ The timer is an independent one-shot LaunchDaemon, not the watchdog or chat shel
 It exits without changing rules if no activation occurs or the user disables.
 Do not re-enable after the first test without checking/rearming the timer.
 
-## Observer
+## Observer (historical first trial)
 
 The separate root observer waits for actual On status. It then starts header-only
 physical captures, attempts direct TCP/DNS using Darwin IP_BOUND_IF=25 (confirmed

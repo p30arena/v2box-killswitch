@@ -31,8 +31,8 @@ def main():
         time.sleep(1)
     else:
         return 0
-    (TEST / "activation-observed.json").write_text(json.dumps({"unix_time": time.time(), "fallback_after_seconds": 180}))
-    deadline = time.monotonic() + 180
+    (TEST / "activation-observed.json").write_text(json.dumps({"unix_time": time.time(), "fallback_after_seconds": 600}))
+    deadline = time.monotonic() + 600
     while time.monotonic() < deadline:
         if (TEST / "confirmed").exists(): return 0
         with store.locked(): enabled = store.read()

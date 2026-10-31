@@ -108,12 +108,14 @@ final class GuardClient {
     }
 }
 
-final class MenuController: NSObject, NSApplicationDelegate {
+final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let client = GuardClient()
     private var item: NSStatusItem!
     private let actual = NSMenuItem(title: "Protection: UNAVAILABLE", action: nil, keyEquivalent: "")
     private let vpn = NSMenuItem(title: "VPN health: UNKNOWN", action: nil, keyEquivalent: "")
     private let mode = NSMenuItem(title: "Policy: UNKNOWN", action: nil, keyEquivalent: "")
+    private let trial = NSMenuItem(title: "Trial: not started", action: nil, keyEquivalent: "")
+    private var actionInFlight = false
     private let toggle = NSMenuItem(title: "Enable Protection…", action: #selector(enableProtection), keyEquivalent: "")
     private let disable = NSMenuItem(title: "Disable Protection…", action: #selector(disableProtection), keyEquivalent: "")
     private var requestGeneration = 0
@@ -125,8 +127,10 @@ final class MenuController: NSObject, NSApplicationDelegate {
         item.button?.title = "Guard ?"
         item.button?.toolTip = "Protection state unknown until helper responds"
         let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.delegate = self
         menu.addItem(NSMenuItem(title: "V2Box Guard", action: nil, keyEquivalent: ""))
-        menu.addItem(actual); menu.addItem(mode); menu.addItem(vpn); menu.addItem(.separator())
+        menu.addItem(actual); menu.addItem(mode); menu.addItem(vpn); menu.addItem(trial); menu.addItem(.separator())
         toggle.target = self; disable.target = self; reconnect.target = self
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
         menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect); menu.addItem(.separator())
@@ -140,7 +144,10 @@ final class MenuController: NSObject, NSApplicationDelegate {
         refreshStatus()
     }
 
+    func menuWillOpen(_ menu: NSMenu) { refreshStatus() }
+
     @objc private func refreshStatus() {
+        guard !actionInFlight else { return }
         requestGeneration += 1
         let generation = requestGeneration
         client.request("status") { [weak self] result in
@@ -151,6 +158,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
                     self.actual.title = "Protection: ERROR / UNKNOWN"
                     self.vpn.title = "VPN health: UNKNOWN"
                     self.mode.title = "Policy: UNKNOWN"
+                    self.trial.title = "Trial: unavailable"
                     self.toggle.isEnabled = false
                     self.disable.isEnabled = false
                     self.reconnect.isEnabled = false
@@ -161,11 +169,18 @@ final class MenuController: NSObject, NSApplicationDelegate {
                     let health = data["vpn_health"] ?? "unverified"
                     guard ["on", "off", "error"].contains(state) else {
                         self.actual.title = "Protection: ERROR / UNKNOWN"
+                        self.trial.title = "Trial: unavailable"
                         self.toggle.isEnabled = false
                         self.disable.isEnabled = false
                         self.reconnect.isEnabled = false
                         self.item.button?.title = "Guard !"
                         return
+                    }
+                    switch data["trial_verdict"] {
+                    case "limited_ipv4_pass": self.trial.title = "Trial: IPv4 checks passed (limited)"
+                    case "inconclusive": self.trial.title = "Trial: inconclusive — review needed"
+                    case "unavailable": self.trial.title = "Trial: unavailable"
+                    default: self.trial.title = "Trial: not started"
                     }
                     self.actual.title = "Protection: \(state.uppercased())"
                     self.vpn.title = "VPN health: \(health.uppercased())"
@@ -226,6 +241,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         requestGeneration += 1 // Discard status replies from before this action.
+        actionInFlight = true
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
         do {
             let session = try AuthorizationSession()
@@ -241,6 +257,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     private func actionFinished(_ result: Result<[String: String], Error>) {
+        actionInFlight = false
         if case .failure(let error) = result {
             let alert = NSAlert()
             alert.messageText = "Action not confirmed"
@@ -252,6 +269,7 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func reconnectVPN() {
+        actionInFlight = true
         requestGeneration += 1
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
         client.request("reconnect") { [weak self] result in

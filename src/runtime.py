@@ -66,11 +66,12 @@ def read_config(directory):
 
 
 class Runtime:
-    def __init__(self, controller, runner, config_reader, now=time.time):
+    def __init__(self, controller, runner, config_reader, now=time.time, trial_reader=None):
         self.controller = controller
         self.runner = runner
         self.config_reader = config_reader
         self.now = now
+        self.trial_reader = trial_reader
         self.api = BackendAPI(controller)
 
     def checked(self, args):
@@ -130,6 +131,14 @@ class Runtime:
             return self.api.dispatch("disable")
         if operation == "status":
             result = self.api.dispatch("status")
+            if self.trial_reader is not None:
+                try:
+                    trial = self.trial_reader()
+                    verdict = trial.get("verdict", "not_started")
+                    allowed = {"not_started", "inconclusive", "limited_ipv4_pass"}
+                    result["trial_verdict"] = verdict if verdict in allowed else "inconclusive"
+                except Exception:
+                    result["trial_verdict"] = "unavailable"
             try:
                 config = self.config_reader()
                 base = self.snapshot(config)
@@ -171,6 +180,17 @@ class Runtime:
             raise
 
 
+def read_trial_summary(directory):
+    path = directory / "first-test/observation.json"
+    if not path.exists(): return {"verdict": "not_started"}
+    raw = path.read_bytes()
+    if len(raw) > 16384: raise ControllerError("trial report oversized")
+    report = json.loads(raw)
+    if report.get("verdict") == "limited_ipv4_pass" and not (directory / "first-test/confirmed").exists():
+        return {"verdict": "inconclusive"}
+    return report
+
+
 def main():
     # This is the ONLY real execution entrypoint. Building/importing never calls it.
     if os.geteuid() != 0 or len(sys.argv) != 2 or sys.argv[1] not in ("status", "enable", "disable", "refresh"):
@@ -191,7 +211,8 @@ def main():
                 raise ControllerError("trusted boot identity unavailable")
             tokens = TokenStore(state_dir, ":".join(match.groups()))
             controller = Controller(StateStore(state_dir), PFDriver(run, tokens))
-            runtime = Runtime(controller, run, lambda: read_config(DIRECTORY))
+            runtime = Runtime(controller, run, lambda: read_config(DIRECTORY),
+                              trial_reader=lambda: read_trial_summary(DIRECTORY))
             print(json.dumps(runtime.dispatch(sys.argv[1])))
         return 0
     except Exception:

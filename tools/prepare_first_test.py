@@ -50,8 +50,11 @@ def main():
     raw_baseline = (backup / "pf-root.txt").read_text()
     baseline_rules = "\n".join(x.strip() for x in raw_baseline.splitlines()
                                if x.strip() and not x.strip().startswith(("scrub ", "scrub-anchor ", "no scrub ")))
-    if baseline_rules not in ('', 'anchor "com.apple/*" all', 'anchor "/*" all'):
-        raise RuntimeError("non-default root filters need separate integration review")
+    gate_loaded = baseline_rules.splitlines()[:1] == ['anchor "com.p30arena.v2box-killswitch" quick all']
+    allowed = ('', 'anchor "com.apple/*" all', 'anchor "/*" all')
+    remaining = "\n".join(baseline_rules.splitlines()[1:]) if gate_loaded else baseline_rules
+    if remaining not in allowed or (backup / "project-anchor.txt").read_text().strip():
+        raise RuntimeError("non-default root filters or populated project anchor need separate review")
     recursive = command(["/sbin/pfctl", "-a", "*", "-sr"]).stdout
     atomic(backup / "recursive-filters.txt", recursive, 0o600)
     # Detached old anchors are backed up but never attached/deleted. Only the
@@ -91,9 +94,11 @@ def main():
     target = 'anchor "com.apple/*"\n'
     lines = old.splitlines(keepends=True)
     matches = [i for i, line in enumerate(lines) if line == target]
-    if len(matches) != 1 or gate in old:
+    gates = [i for i, line in enumerate(lines) if line == gate]
+    if len(matches) != 1 or len(gates) > 1 or (gates and gates[0] >= matches[0]):
         raise RuntimeError("unexpected PF config; manual integration needed")
-    lines.insert(matches[0], gate)
+    if not gates:
+        lines.insert(matches[0], gate)
     proposed = "".join(lines)
     command(["/sbin/pfctl", "-n", "-f", "-"], input=proposed)
     # Stage all test artifacts, still OFF and with no approved policy installed.
@@ -112,9 +117,10 @@ def main():
     try:
         # PF stays DISABLED. This attaches an empty gate only. All original root
         # text is backed up; any failure before activation restores it.
-        atomic(Path("/etc/pf.conf"), proposed, 0o644)
-        changed_root = True
-        command(["/sbin/pfctl", "-f", "/etc/pf.conf"])
+        if proposed != old or not gate_loaded:
+            atomic(Path("/etc/pf.conf"), proposed, 0o644)
+            changed_root = True
+            command(["/sbin/pfctl", "-f", "/etc/pf.conf"])
         if "Status: Disabled" not in command(["/sbin/pfctl", "-s", "info"]).stdout:
             raise RuntimeError("PF unexpectedly enabled; stop for manual review")
         command(["/bin/launchctl", "bootstrap", "system", str(PLIST)])
@@ -136,7 +142,7 @@ def main():
         print(json.dumps({"prepared": True, "pf_enabled": False, "protection": "off",
                           "can_enable": True, "private_backup": str(backup),
                           "timer_waits_for_activation_seconds": 900,
-                          "quarantine_after_activation_seconds": 180,
+                          "quarantine_after_activation_seconds": 600,
                           "approved_inventory_expires_in_seconds": 86400}))
     except Exception:
         # This routine NEVER enables PF. If an external actor did, do not restore

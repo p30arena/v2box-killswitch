@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Independent diagnostic observer. No PF writes, enable/disable or confirmation.
+"""Independent diagnostic observer. No PF writes or enable/disable operations.
 
 Waits for verified test activation, captures physical headers, then tests pinned
 health and interface-bound direct TCP/DNS. All data stays in a root-private folder.
 """
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
 BASE = Path("/Library/Application Support/V2BoxGuard")
@@ -61,9 +63,58 @@ def direct_probe(device, local, address, port, udp=False):
         sock.close()
 
 
+def atomic_json(path, data):
+    fd, name = tempfile.mkstemp(prefix=".trial-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as output:
+            json.dump(data, output, indent=2)
+            output.flush(); os.fsync(output.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+
+
+def confirm_limited_trial(config, snapshot, report):
+    """Confirm only while the SAME kernel policy, network snapshot and intent hold."""
+    from controller import StateStore
+    from endpoints import approved_config
+    from pf_driver import PFDriver, ANCHOR
+    from policy import compile_policy
+    from runtime import Runtime, run as native_run, read_config
+    from trial import evaluate_ipv4_trial
+    passed, reason = evaluate_ipv4_trial(report)
+    report["reason"] = reason
+    if not passed: return False
+    fd = os.open(BASE / "state/runtime.lock", os.O_WRONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "w") as outer:
+        fcntl.flock(outer, fcntl.LOCK_EX)
+        store = StateStore(BASE / "state")
+        with store.locked():
+            if not store.read() or (TEST / "fallback-applied").exists():
+                report["reason"] = "disabled_or_quarantine_already_applied"; return False
+            current = read_config(BASE)
+            runtime = Runtime(None, native_run, lambda: current)
+            if current != config or runtime.snapshot(current) != snapshot:
+                report["reason"] = "network_or_approval_changed"; return False
+            runtime.preflight()
+            backend = PFDriver(native_run, None)  # read/syntax-check only
+            if not backend._root_has_gate() or "Status: Enabled" not in backend._call("-s", "info"):
+                report["reason"] = "enforcement_not_current"; return False
+            expected = compile_policy(approved_config(snapshot, current["inventory"], current["profile"], time.time()))
+            canonical = backend._call("-n", "-v", "-a", ANCHOR, "-f", "-", text=expected)
+            if backend._call("-a", ANCHOR, "-sr").strip() != canonical.strip():
+                report["reason"] = "kernel_policy_changed"; return False
+            report["verdict"] = "limited_ipv4_pass"
+            atomic_json(TEST / "observation.json", report)
+            atomic_json(TEST / "confirmed", {"scope": "limited_ipv4_only", "unix_time": time.time()})
+            return True
+
+
 def main():
     if os.geteuid() != 0 or sys.argv[1:] != ["--observe"]: return 1
-    report = {"probes": [], "health": "unverified", "ipv6": "not_tested", "verdict": "inconclusive"}
+    report = {"probes": [], "health": "unverified", "ipv6": "not_tested", "verdict": "inconclusive",
+              "capture_started": False, "ipv4_tested_interfaces": [], "router_ping_by_interface": {}}
+    snapshot = config = None
     captures = []
     handles = []
     try:
@@ -95,11 +146,13 @@ def main():
         for device, proc in captures:
             if proc.poll() is not None or "listening on" not in (TEST / ("capture-" + device + ".stderr")).read_text():
                 report["reason"] = "capture_startup_failed"; return 0
+        report["capture_started"] = True
         before = counter()
         for device in devices:
             result = run(["/usr/sbin/ipconfig", "getifaddr", device])
             if result.returncode: continue
             local = result.stdout.strip()
+            report["ipv4_tested_interfaces"].append(device)
             for target, port, udp in [("1.1.1.1", 44443, False), ("1.1.1.1", 53, True)]:
                 outcome = direct_probe(device, local, target, port, udp)
                 report["probes"].append({"interface": device, "protocol": "dns" if udp else "tcp", "outcome": outcome})
@@ -108,7 +161,9 @@ def main():
                     outcome = direct_probe(device, local, gateway["address"], 53, True)
                     report["probes"].append({"interface": device, "protocol": "router_dns", "outcome": outcome})
                     ping = run(["/sbin/ping", "-b", device, "-c", "1", "-W", "2000", gateway["address"]], timeout=4)
-                    report["router_ping"] = "success" if ping.returncode == 0 else "failed_or_unverified"
+                    report["router_ping_by_interface"][device] = "success" if ping.returncode == 0 else "failed_or_unverified"
+        pings = report["router_ping_by_interface"]
+        report["router_ping"] = "success" if pings and all(x == "success" for x in pings.values()) else "failed_or_unverified"
         time.sleep(1)
         after = counter()
         report["block_counter_before"] = before
@@ -132,7 +187,28 @@ def main():
                 try: proc.wait(timeout=3)
                 except subprocess.TimeoutExpired: proc.kill(); proc.wait()
         for handle in handles: handle.close()
-        (TEST / "observation.json").write_text(json.dumps(report, indent=2))
+        if report.get("verdict") == "review_required":
+            try:
+                report["capture_kernel_drops"] = {}
+                report["direct_tcp_probe_headers"] = 0
+                report["outbound_dns_headers"] = 0
+                report["outbound_transport_headers"] = 0
+                for device, _ in captures:
+                    rows = (TEST / ("capture-" + device + ".txt")).read_text().splitlines()
+                    stderr = (TEST / ("capture-" + device + ".stderr")).read_text()
+                    dropped = re.search(r"(?m)^(\d+) packets dropped by kernel", stderr)
+                    report["capture_kernel_drops"][device] = int(dropped.group(1)) if dropped else None
+                    report["direct_tcp_probe_headers"] += sum(bool(re.search(r" > 1\.1\.1\.1\.44443:", row)) for row in rows)
+                    report["outbound_dns_headers"] += sum(bool(re.search(r" > [^ ]+\.53:", row)) for row in rows)
+                    for peer in peers:
+                        endpoint = re.escape(peer["address"] + "." + str(peer["port"]))
+                        report["outbound_transport_headers"] += sum(bool(re.search(r" > " + endpoint + ":", row)) for row in rows)
+                if not confirm_limited_trial(config, snapshot, report):
+                    report["verdict"] = "inconclusive"
+            except Exception as error:
+                report["reason"] = type(error).__name__
+                report["verdict"] = "inconclusive"
+        atomic_json(TEST / "observation.json", report)
     return 0
 
 

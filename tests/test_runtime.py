@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from controller import Controller, ControllerError, StateStore
 from pf_driver import PFDriver, ANCHOR
-from runtime import Runtime
+from runtime import Runtime, read_trial_summary
 from test_pf_driver import Kernel, Tokens
 from test_gateways import ROUTE, INFO, PORTS
 
@@ -49,6 +49,24 @@ class RuntimeTests(unittest.TestCase):
                            "revision": "1", "expires_at": 2000,
                            "endpoints": [{"address": "1.1.1.1", "port": 443, "protocol": "tcp"}]}}}}
         self.runtime = Runtime(self.controller, self.native.run, lambda: copy.deepcopy(self.config), now=lambda: 1000)
+
+    def test_trial_status_is_allowlisted(self):
+        self.runtime.trial_reader = lambda: {"verdict": "limited_ipv4_pass"}
+        self.assertEqual(self.runtime.dispatch("status")["trial_verdict"], "limited_ipv4_pass")
+        self.runtime.trial_reader = lambda: {"verdict": "arbitrary data"}
+        self.assertEqual(self.runtime.dispatch("status")["trial_verdict"], "inconclusive")
+
+    def test_no_trial_report_is_not_started(self):
+        self.assertEqual(read_trial_summary(Path(self.temp.name))["verdict"], "not_started")
+
+    def test_trial_pass_without_confirmation_marker_is_inconclusive(self):
+        import json
+        directory = Path(self.temp.name) / "first-test"
+        directory.mkdir()
+        (directory / "observation.json").write_text(json.dumps({"verdict": "limited_ipv4_pass"}))
+        self.assertEqual(read_trial_summary(Path(self.temp.name))["verdict"], "inconclusive")
+        (directory / "confirmed").write_text("limited scope")
+        self.assertEqual(read_trial_summary(Path(self.temp.name))["verdict"], "limited_ipv4_pass")
 
     def test_enable_status_disable_with_fake_kernel(self):
         self.assertEqual(self.runtime.dispatch("status")["can_enable"], "true")
