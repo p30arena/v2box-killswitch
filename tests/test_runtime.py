@@ -98,6 +98,17 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(status["can_auto_connect"], "false")
         self.assertNotIn("auto_connect_service_uuid", status)
 
+    def test_explicit_permanent_approval_keeps_on_and_auto_connect_available(self):
+        self.config["inventory"]["profiles"]["one"]["expires_at"] = None
+        self.runtime.dispatch("enable")
+        rules = self.native.pf.rules
+        self.runtime.now = lambda: 10**12
+        self.runtime.dispatch("refresh")
+        status = self.runtime.dispatch("status")
+        self.assertEqual(status["state"], "on")
+        self.assertEqual(status["can_auto_connect"], "true")
+        self.assertEqual(self.native.pf.rules, rules)
+
     def test_auto_connect_not_advertised_for_unknown_or_expired_approval(self):
         self.runtime.dispatch("enable")
         self.config["inventory"]["profiles"]["one"]["expires_at"] = 999

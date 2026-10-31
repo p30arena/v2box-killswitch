@@ -58,7 +58,9 @@ NOT counted as restored usable connectivity. No unprotected fallback was used.
 - `/etc/pf.conf` hash remained
   `5c19552511b74875cbc78f63c1c4601db9292989003a83cdcd8065c9f2284e72`.
 - Approval expires 24 hours after preparation. Expiry/network/profile changes can
-  fail closed and interrupt connectivity; this is not permanent endpoint approval.
+  fail closed and interrupt connectivity; this was not permanent approval at
+  trial completion. The user subsequently explicitly removed that active expiry;
+  see [approval expiry removal](APPROVAL-EXPIRY.md).
 - Persistent automatic reconnect is **not installed**. This was an explicit
   one-time diagnostic reconnect, not proof of an autonomous recovery service.
   Subsequently, a separately approved [app update](ON-UPDATE.md) installed the

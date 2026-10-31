@@ -13,7 +13,7 @@ class EndpointApprovalRequired(PolicyError):
 
 
 def approved_config(base, inventory, active_profile, now):
-    """Build a full replacement from an unexpired approved profile revision.
+    """Build from an approved revision; expires_at=None explicitly has no expiry.
 
     Profile changes require a previously approved profile entry. Provider updates
     require a separately reviewed inventory update, not a fail-open DNS exception.
@@ -28,10 +28,11 @@ def approved_config(base, inventory, active_profile, now):
     if not isinstance(entry, dict) or set(entry) != {"revision", "expires_at", "endpoints"}:
         raise PolicyError("invalid profile inventory")
     expires = entry["expires_at"]
-    if (type(expires) not in (int, float) or not math.isfinite(expires) or
-            type(now) not in (int, float) or not math.isfinite(now)):
+    if (type(now) not in (int, float) or not math.isfinite(now)
+            or (expires is not None and
+                (type(expires) not in (int, float) or not math.isfinite(expires)))):
         raise PolicyError("invalid inventory timestamp")
-    if expires <= now:
+    if expires is not None and expires <= now:
         raise EndpointApprovalRequired("endpoint approval expired; local approval required")
     if not isinstance(entry["revision"], str) or not entry["revision"]:
         raise PolicyError("missing revision")

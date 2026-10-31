@@ -87,6 +87,7 @@ scutil reconnect remains separate evidence; neither establishes forced-crash,
 IPv6, reboot or general recovery reliability.
 The original updater is Off-only: do NOT run it against the active guard or
 disable protection automatically to make an update possible. Independent helper-failure GUI Disable and reboot/network/
-IPv6 validation remain open. The live endpoint approval still has its existing
-24-hour expiry; this feature does not extend it or change expiry's fail-closed
-behaviour. Public release remains withdrawn.
+IPv6 validation remain open. The user subsequently explicitly removed the active
+profile's [24-hour approval expiry](APPROVAL-EXPIRY.md). Its exact approved endpoint
+now has no time limit; unknown endpoints/profiles remain blocked. Auto-reconnect
+itself does not edit approvals. Public release remains withdrawn.
