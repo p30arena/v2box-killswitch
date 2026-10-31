@@ -1,68 +1,39 @@
-# V2Box Kill Switch for macOS
+# V2Box Kill Switch for macOS — WITHDRAWN / NOT SAFE TO INSTALL
 
-A small PF based egress kill switch and launchd recovery helper for V2Box’s macOS Packet Tunnel. PF blocks outbound traffic by default, permits loopback and the active V2Box tunnel, and allows only V2Box’s configured transport endpoint on active physical interfaces. A user LaunchAgent requests reconnection when macOS reports the VPN disconnected; a root LaunchDaemon refreshes the PF anchor as interfaces or the endpoint change.
+> **Stop: this project has caused loss of all network connectivity on a real Mac. Do not install or enable it.** The earlier installation instructions were unsafe and are withdrawn pending a redesigned and independently tested implementation. If you installed it, use the recovery procedure below.
 
-This project uses undocumented PF integration points. Apple says PF is not a supported API, and network filter interaction may vary by macOS release. Treat the rules as a starting point for a controlled local evaluation, not a universal guarantee.
+This repository is retained publicly to document the failure and prevent others from repeating it. It is **not a working or supported kill switch**.
 
-## Security behavior and limits
+## Known failure modes
 
-- The default rule blocks outbound IPv4 and IPv6. There is no general DNS exception.
-- Loopback and V2Box tunnel traffic are statelessly passed so existing connections survive PF activation.
-- The endpoint exception accepts established TCP flows and is bound to the physical interface. PF cannot restrict this IP/port exception to the V2Box process; other processes can connect to the same endpoint.
-- If endpoint or interface discovery fails, the helper retains the previous rules. Stale endpoint rules can prevent reconnection while the default block remains in force.
-- Reconnection checks macOS connection status, not end-to-end tunnel health. A hung session that still reports Connected may not be restarted.
-- PF’s system configuration is loaded before launchd jobs, but PF may not be enabled until the helper starts. This leaves a possible early boot window. Reboot behavior must be tested locally.
-- Local network access and captive portals are blocked except for narrow DHCP and IPv6 neighbor discovery traffic.
-- This project has no paid dependencies. It requires macOS command line tools, Python 3, and the V2Box service registered as `V2BOX` by default.
+- The PF policy blocks essentially all outbound traffic except the active tunnel and a specific VPN transport peer. It also blocks ordinary LAN access (for example, a router at `192.168.1.1`).
+- When the VPN provider changes the remote endpoint, an exception based on a previously discovered address can become stale. The VPN then cannot reconnect, while the default-deny rule blocks all other traffic.
+- PF enable references (`pfctl -E`) are reference-counted. A plain `pfctl -d` may not release an enable reference held by another process. Persistent launchd jobs can also re-enable PF or reload rules after a manual recovery.
+- The project’s endpoint parsing, service startup ordering, PF anchor interactions, and network-change handling have not been validated sufficiently across macOS versions. Syntax checks are not safety tests.
+- There is no verified boot-time guarantee, no process-exclusive endpoint exception, and no proof of safe behavior for every V2Box configuration.
 
-## Repository contents
+These are significant limitations, not acceptable caveats for a production kill switch. Do not use the scripts, sample rules, or install steps as an operational guide.
 
-- `bin/pf-refresh.py`: root helper that discovers the V2Box endpoint, active physical interfaces, and V2Box-owned `utun`, then refreshes only this project’s anchor.
-- `bin/watchdog.sh`: bounded native reconnect attempts after a disconnected status.
-- `bin/status.sh`: concise VPN and PF status.
-- `bin/diagnose.sh`: read-only interface, PF, and provider peer snapshot. PF details require `sudo`.
-- `bin/test-firewall-block.sh`: sends direct IPv4, DNS, and (when routable) IPv6 probes while capturing a physical interface. Run only with a reviewed active policy. It uses PF counters and capture output; a counter increase can include unrelated drops, so inspect the capture too.
-- `config/`: LaunchDaemon and LaunchAgent examples plus a placeholder PF anchor. Replace `V2BOX` in the plists if the Network service has another name.
+## If you already installed it and lost connectivity
 
-## Install
-
-Review every script and rule first. Keep a local Terminal available during activation. Save `/etc/pf.conf` and the current PF rules before editing. The anchor reference must appear in the filter section before Apple’s filter anchor:
-
-```pf
-anchor "com.p30arena.v2box-killswitch"
-load anchor "com.p30arena.v2box-killswitch" from "/etc/pf.anchors/com.p30arena.v2box-killswitch"
-```
-
-Install the refresh script and anchor under root-owned paths, for example:
+Use a local console. This may disable other PF protections, so understand the impact before proceeding. First stop this project's jobs so they cannot reload rules:
 
 ```sh
-sudo install -d -o root -g wheel -m 755 /usr/local/libexec/v2box-killswitch
-sudo install -o root -g wheel -m 755 bin/pf-refresh.py /usr/local/libexec/v2box-killswitch/pf-refresh.py
-sudo install -o root -g wheel -m 755 bin/watchdog.sh /usr/local/libexec/v2box-killswitch/watchdog.sh
+sudo launchctl bootout system /Library/LaunchDaemons/com.p30arena.v2box-killswitch.refresh.plist
+launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.p30arena.v2box-killswitch.watchdog.plist"
 ```
 
-If `scutil --nc status` does not include the endpoint fields, create a root-owned endpoint file using `config/endpoint.conf.example` as a format guide. It must contain only the profile hostname and TCP port, for example `vpn.example.invalid 443` (replace with your own V2Box values). Install it with mode 600 under `/etc/v2box-killswitch/endpoint`. Never commit this local file.
-
-Copy the LaunchDaemon to `/Library/LaunchDaemons/com.p30arena.v2box-killswitch.refresh.plist` and the LaunchAgent to `~/Library/LaunchAgents/com.p30arena.v2box-killswitch.watchdog.plist`. Make sure their program paths match the installed files. Add the anchor reference to `/etc/pf.conf`, then syntax-check without loading:
+Then, only if you accept disabling/clearing PF rules that may belong to other software, the broad emergency reset is:
 
 ```sh
-sudo pfctl -nf /etc/pf.conf
-sudo pfctl -f /etc/pf.conf
-sudo /usr/local/libexec/v2box-killswitch/pf-refresh.py --once
+sudo pfctl -F all -d
 ```
 
-Load the services after reviewing the generated anchor and confirming you have a local recovery path:
+This clears PF rules and states and disables PF; it can affect unrelated firewall software. Verify the project jobs are removed or unloaded before reconnecting. Restore any saved `/etc/pf.conf` only after reviewing it. Do not blindly reload an old project configuration.
 
-```sh
-sudo launchctl bootstrap system /Library/LaunchDaemons/com.p30arena.v2box-killswitch.refresh.plist
-launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/com.p30arena.v2box-killswitch.watchdog.plist"
-```
+## Repository status
 
-Check `sudo pfctl -s info`, `sudo pfctl -a com.p30arena.v2box-killswitch -sr`, and `./bin/status.sh`. Do not test by disconnecting the VPN until direct physical egress probes are blocked and tunnel traffic succeeds.
-
-## Uninstall
-
-Boot out both launchd jobs, restore your saved `/etc/pf.conf`, and reload that restored file. Remove only this project’s anchor and installed files. Do not disable PF if another service may depend on it. Verify the remaining PF rules and enable state afterward.
+The scripts and configuration are preserved for incident analysis only. They are not endorsed for installation. Any future replacement must be designed and tested on supported macOS releases, include a reliable local rollback that accounts for PF reference counting and launchd persistence, handle endpoint changes safely, define LAN policy explicitly, and be reviewed before publication.
 
 ## License
 
