@@ -21,4 +21,13 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX13.3.sdk bash menu-bar/bu
 Output: `menu-bar/.build/manual/V2BoxGuardPreview`. Building does not launch it.
 No developer-tool selection changes or dependency installs are required.
 
+To package an uninstalled, unsigned demo app bundle (also does not launch it):
+
+```sh
+bash menu-bar/package-preview.sh
+```
+
+Output: `menu-bar/.build/V2BoxGuardPreview.app`. This is visibly DEMO and still
+has simulated controls only.
+
 The privileged controller described in `../docs/MENU-BAR.md` remains unimplemented.
