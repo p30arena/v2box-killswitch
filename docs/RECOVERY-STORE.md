@@ -69,8 +69,11 @@ future trusted supervisor must persist and reconcile its own trustworthy lifecyc
 information; missing child metadata alone is not proof that no command can start.
 There is deliberately no age-based expiry or automatic reconciliation API here.
 
-All-writer integration, user credentials/bootstrap-session execution, descendant
-supervision, bounded cancellation and a working GUI recovery path remain blockers.
-Do not wire an unresolved fence into menu Disable until reconciliation is proven
-and usable: otherwise it can create a permanent lockout. The installed Disable
-and diagnostic-only deployment are untouched.
+The broker now uses this fence only to pause NEW automatic recovery. Explicit,
+authorized protection Disable does not read/clear or depend on this store; an
+unknown or corrupt record must not create an indefinite menu lockout. A prior VPN
+operation may finish later, but reconciliation cannot re-enable protection.
+
+All-writer integration, pinned user-session execution, descendant supervision,
+aggregate deadlines and helper-failure GUI recovery remain blockers. The installed
+Disable and diagnostic-only deployment are untouched.

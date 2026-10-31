@@ -17,9 +17,10 @@ The worker rejects root/invalid target UIDs and requires:
 - The current console user match the same UID.
 
 The launchctl manual explicitly says `asuser` adopts bootstrap/audit context but
-DOES NOT drop credentials. A future root launcher must establish both. These
-checks do not implement the root-to-user launch itself or independently attest
-all audit-session properties. They only verify the worker's observed identity.
+DOES NOT drop credentials. A [separate read-only root-to-user diagnostic](USER-SESSION-LAUNCH.md)
+now validates an asuser/sudo launch arrangement with Apple system identity queries.
+It does not launch/deploy this worker or provide a VPN executor. These worker
+checks do not independently attest all audit-session properties.
 
 Only two fixed read-only launchctl commands can be spawned. stdin is /dev/null,
 stdout is captured privately, stderr discarded, environment fixed, and unrelated
@@ -70,13 +71,15 @@ No admin prompt, service registration, PF write, network probe, start or stop oc
 
 - A root-owned/pinned worker artifact, authenticated broker path and sterile launch
   environment; never use the user-writable build artifact as a privileged executor.
-- Correct root-to-user credentials AND bootstrap/audit-session launch.
+- Integrate the validated credential/bootstrap launch arrangement with the pinned
+  worker; review audit-session details. The identity diagnostic alone is not an executor.
 - Durable supervisor/child lifecycle witness bound to the pending ticket, with
   restart-safe reconciliation. A fence alone is not a child identity.
 - Actual fixed-command execution with ownership of every potential descendant,
   bounded cancellation, verified termination and no stale-PID signalling.
-- Shared-lock/fence integration for EVERY intent writer and usable emergency GUI
-  recovery. The existing Disable must not be replaced by a permanent pending latch.
+- Shared-transaction/disabled-intent integration for EVERY intent writer and
+  usable emergency GUI recovery. Pending state pauses new recovery, not explicit
+  authorized protection Disable; an earlier operation may still finish.
 
 The installed diagnostic-only deployment remains unchanged; reconnect remains
 unavailable and no live trial is prepared.

@@ -9,72 +9,76 @@ and captures its kernel-derived effective UID. Foundation checks the requirement
 before dispatching messages. No caller-supplied UID or authentication boolean is
 accepted by the native protocol.
 
-The helper source now exports a separate connection facade per peer, retaining
-that identity. All facades share ONE operations core/queue/timer, rather than
-creating duplicate refresh timers per connection. Management authorization still
-uses the existing admin right. The reconnect path additionally checks current
-console-user ownership when dispatched, not merely at connection acceptance.
-It still replies unavailable and never executes a VPN command.
+The helper source exports a separate connection facade per peer, retaining that
+identity. All facades share ONE operations core/queue/timer. Management still
+requires the admin right. Reconnect additionally checks current console ownership
+when dispatched, not just at connection acceptance. It still replies unavailable.
+Anonymous unprivileged XPC tests cover peer pins and kernel UID/console-owner gates.
 
-Anonymous, unprivileged XPC tests exercise exact peer pins, actual connection UID,
-matching owner, missing owner, root owner and a different owner. They do not
-register the real helper, authenticate an administrator, or change networking.
+## Correct scope: Disable protection is not Disconnect VPN
+
+An earlier model refused Disable whenever a pending command lacked termination
+proof. That was too strict and could create the lockout the menu must prevent.
+The model has been corrected BEFORE any deployment:
+
+- A pending/unknown command fences NEW AUTOMATIC RECOVERY, not an explicit,
+  authorized protection Disable.
+- Disable uses the shared transaction and the normal controller: persist Off FIRST,
+  then remove owned rules/references and verify. Enforcement failures propagate;
+  never invent an Off response. It does not read or erase recovery pending data.
+- A previously created VPN operation may still finish after protection is Off.
+  Disable protection is not a promise to disconnect VPN or kill an unknown child.
+- Once Off commits, the broker cannot authorize a new operation from that intent.
+  Completing/reconciling an older ticket cannot re-enable protection.
+- Recovery NEVER calls Disable automatically. Restoring direct access is only an
+  explicitly authorized user decision, not an outage/timeout recovery mechanism.
+
+A running transaction may still delay Disable until its executor returns; the
+native aggregate deadline and safe timeout path remain integration blockers.
+This correction removes the indefinite fence-based refusal, not every possible
+helper/kernel availability problem. The installed Disable is untouched.
 
 ## Offline ordering model
 
-`src/recovery_broker.py` is an injected model, not a root runner or transport.
+`src/recovery_broker.py` is injected, not a root runner or transport.
 
 - Only start/stop requests exist; service UUID comes from fresh private approval.
-- Context must identify the approved service and same non-root console user,
-  with enabled intent and verified approved kernel policy, never quarantine.
-- All participating operations share one transaction lock.
-- A pending ticket is written BEFORE supervised execution is possible.
-- The lock spans command execution and proof that the command/descendants cannot
-  start later. A participating Disable either commits first and prevents the
-  command, or waits for proven termination before committing.
-- Timeout, exception, mismatched completion or pending-clear failure never count
-  as successful completion. The pending fence prevents another command or a
-  participating Disable until trusted reconciliation proves completion.
-- An explicit nonzero exit with proven termination is a command failure, not an
-  unresolved running process. It permits clearing the pending ticket.
+- The same non-root console user, enabled intent, and exact verified approved
+  kernel policy are required. Quarantine does not permit recovery.
+- All participating operations share one transaction lock. The pending ticket is
+  durably written BEFORE execution is possible.
+- The executor normally owns the command through proven completion. Timeout,
+  exception, mismatched completion or uncertain pending clear leaves recovery
+  fenced. It does not block explicit Disable or prove that a child is dead.
+- A proven nonzero exit clears the ticket but is reported as command failure.
+- Clearing/reconciliation requires matching ticket AND user ID; it never alters
+  protection intent or grants connectivity.
 
-Ordering tests use fake executors, a shared thread lock and an in-memory pending
-store. Additional integration tests now use the
-[file-backed pending store](RECOVERY-STORE.md), including a fresh-process read
-and simulated interrupted writes. Threaded tests demonstrate the ordering; these
-tests do not prove power-loss durability or any macOS child-execution behavior.
-The broker clears pending state only by matching ticket AND user ID.
+Threaded fake-executor tests demonstrate command/Disable ordering. Other tests
+cover explicit Disable with unknown/corrupt/other-boot recovery state and no new
+operation after reconciliation while Off. Real temporary-file integration and
+fresh-process reads exercise the [pending store](RECOVERY-STORE.md). These do not
+prove power-loss durability, native descendant control or live session behavior.
 
-`Peer`, `Context` and `Completion` in this model are NOT authentication primitives.
-They must eventually be constructed by trusted native/root components, never
-parsed from caller-controlled XPC request/completion fields. In particular, a
-signed user client claiming "finished" is not a supervised termination proof.
+`Peer`, `Context` and `Completion` are NOT authentication primitives. Trusted native
+components must construct them, not parse them from XPC request/completion fields.
+A signed user client claiming "finished" is not supervised termination proof.
 
-## Deployment blockers — do not replace working Disable with this model
+## Remaining integration blockers
 
-The prototype can deliberately refuse Disable when command state is unknown.
-That is a safety specification, NOT an acceptable completed GUI recovery path.
-The installed Disable is untouched. Before any integration:
+1. Deploy/integrate the private pending store separately from bounded diagnostics.
+   It is only a fence, not a child-lifecycle witness. Missing witness data is NOT
+   proof that nothing can start later.
+2. Integrate a pinned, root-owned worker with the validated
+   [read-only root-to-user launch](USER-SESSION-LAUNCH.md). The
+   [native worker](RECOVERY-WORKER.md) deliberately cannot execute VPN commands.
+3. Implement actual fixed-command execution under the correct user's credentials
+   and bootstrap/audit session, descendant ownership, bounded cancellation and
+   restart reconciliation without stale-PID/unrelated-process signalling.
+4. Integrate EVERY intent writer with the same transaction and disabled-intent
+   semantics. Runtime/timer do not use this broker yet. Never bypass menu recovery
+   by making explicit Disable depend on a healthy pending journal.
+5. Wire per-connection native identity, aggregate deadlines, audit/status and a
+   usable helper-failure GUI recovery path before a separately approved live test.
 
-1. A private file-backed pending store is now implemented in source, separate
-   from bounded diagnostics. Its root deployment and all-writer integration are
-   still required. It is not a child-lifecycle witness or a completed reconciliation
-   mechanism; do not infer termination from a missing witness.
-2. Implement a bounded, trusted supervisor that executes only fixed scutil
-   operations in the correct logged-in user's credentials AND bootstrap session,
-   never as root. A [read-only native worker](RECOVERY-WORKER.md) now verifies
-   session identity and pre-execution cancellation, but intentionally cannot
-   execute VPN commands. Root-to-user launch and full supervision remain blockers.
-3. Handle cancellation, cleanup and reconciliation without killing unrelated
-   processes or trusting a stale/reused PID. A timeout alone is not termination.
-4. Integrate EVERY intent writer, including backend Disable and independent test
-   timer, with the same transaction/fence. They do not participate yet.
-5. Keep the menu usable and provide a reviewed recovery path for unknown command
-   state/helper failure; do not create a permanent lockout behind this fence.
-6. Wire the per-connection native identity into broker context, establish aggregate
-   deadlines and audit outcomes, then verify actual session behavior with separate
-   approval. No root command path or recovery capability has been exposed yet.
-
-Until those blockers are resolved, the existing read/check/recheck session
-prototype still cannot promise atomic ordering with arbitrary Disable writers.
-Do not treat these model tests as live-security proof.
+Automatic recovery is still unavailable; no new root command path is exposed.

@@ -1,8 +1,8 @@
 """Offline ordering prototype, NOT a live root/XPC/session implementation.
 
-Every participating writer must use the SAME transaction and durable pending
-store. The installed Runtime/timer do not yet participate. Never wire this into
-live Disable until supervision/reconciliation and ALL writers are integrated.
+Every participating writer must use the SAME transaction. Pending state fences
+new automatic recovery, NOT explicit authorized protection Disable. The installed
+Runtime/timer do not yet participate; native supervision is not integrated.
 No native executor, lock, persistence or command runner is supplied by default.
 """
 from dataclasses import dataclass
@@ -110,12 +110,13 @@ class RecoveryBroker:
             return BrokerResult("completed" if result.exit_code == 0 else "command_failed", action)
 
     def disable(self):
-        # Prototype guard only: NOT connected to the installed menu Disable.
+        # Explicit authorized user action ONLY, never a recovery timeout/fallback.
+        # NOT connected to the installed menu. Recovery-state corruption or an
+        # unknown old child must not prevent removing protection at user's request.
+        # A previously created VPN operation may finish; it cannot re-enable PF.
         with self.transaction():
-            try:
-                if self.pending.read() is not None: return BrokerResult("reconciliation_required")
-            except Exception: return BrokerResult("pending_unavailable")
-            # Enforcement errors propagate; never invent an Off acknowledgement.
+            # The real controller persists Off FIRST. Enforcement errors propagate;
+            # never invent an Off acknowledgement. Do not read/clear the fence here.
             return self.disable_protection()
 
     def reconcile(self, supervised_completion):

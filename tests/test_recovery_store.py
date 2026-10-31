@@ -67,8 +67,9 @@ class RecoveryStoreTests(unittest.TestCase):
         self.assertEqual(self.broker(executor=timeout).request("start", Peer(501, True)).state, "reconciliation_required")
         restarted = self.broker(store=self.restarted())
         self.assertEqual(restarted.request("start", Peer(501, True)).state, "reconciliation_required")
-        self.assertEqual(restarted.disable().state, "reconciliation_required")
-        self.assertTrue(self.enabled)
+        self.assertEqual(restarted.disable(), {"state": "off"})
+        self.assertFalse(self.enabled)
+        self.assertEqual(self.store.read(), VALUE)
         self.assertEqual(len(self.executions), 1)
         self.assertEqual(restarted.reconcile(Completion(TICKET, 501, True, 0)).state, "reconciled")
         self.assertEqual(restarted.disable(), {"state": "off"})
@@ -87,16 +88,16 @@ class RecoveryStoreTests(unittest.TestCase):
         self.assertEqual(self.executions, [])
         self.assertEqual(self.broker(store=self.restarted()).request("start", Peer(501, True)).state, "reconciliation_required")
 
-    def test_real_store_other_boot_does_not_allow_execution_or_disable(self):
+    def test_real_store_other_boot_blocks_recovery_not_explicit_disable(self):
         from recovery_broker import Completion, Peer
         self.store.write(VALUE)
         before = self.path.read_bytes()
         broker = self.broker(store=self.restarted("boot-two"))
         self.assertEqual(broker.request("start", Peer(501, True)).state, "context_unavailable")
-        self.assertEqual(broker.disable().state, "pending_unavailable")
+        self.assertEqual(broker.disable(), {"state": "off"})
         self.assertEqual(broker.reconcile(Completion(TICKET, 501, True, 0)).state, "pending_unavailable")
         self.assertEqual(self.executions, [])
-        self.assertTrue(self.enabled)
+        self.assertFalse(self.enabled)
         self.assertEqual(self.path.read_bytes(), before)
 
     def test_missing_read_does_not_create_state(self):

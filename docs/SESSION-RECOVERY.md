@@ -51,10 +51,12 @@ healthy sample, so unverified evidence cannot reset its retry budget.
 ## Critical integration blockers
 
 Fresh checks are NOT an atomic command lease. Disable can commit after the final
-read but before an unprivileged native command starts. A separate
-[broker ordering model and native identity binding](RECOVERY-BROKER.md) now cover
-part of that design, but are not integrated with this controller or the live
-intent writers. Do not promise atomic Disable ordering or deploy this prototype
+read but before an unprivileged native command starts. Future command adapters
+must route authorization through the [broker](RECOVERY-BROKER.md), not execute
+from a stale view. That broker now distinguishes protection intent from a prior
+VPN operation that may still finish: pending state blocks new recovery, not
+explicit authorized protection Disable. These components are not integrated with
+the live intent writers. Do not promise live ordering or deploy this prototype
 on the basis of these unit tests.
 
 A production bridge also needs authenticated peer checks, stable policy/tunnel

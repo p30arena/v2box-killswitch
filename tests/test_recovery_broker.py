@@ -117,37 +117,56 @@ class BrokerTests(unittest.TestCase):
             self.assertEqual(self.broker.request("start", self.peer).state, "pending_unavailable")
         self.assertEqual(self.calls, [])
 
-    def test_timeout_is_not_termination_proof_and_does_not_unlock_disable(self):
+    def test_timeout_fences_recovery_but_never_blocks_explicit_disable(self):
         def timeout(**request): raise TimeoutError("private child state unknown")
         self.broker.execute_and_reap = timeout
         result = self.broker.request("start", self.peer)
         self.assertEqual(result.state, "reconciliation_required")
         self.assertNotIn("private", repr(result))
         self.assertIsNotNone(self.pending.read())
-        self.assertEqual(self.broker.disable().state, "reconciliation_required")
-        self.assertNotIn("disable_committed", self.events)
+        self.assertEqual(self.broker.disable(), {"state": "off"})
+        self.assertIn("disable_committed", self.events)
+        self.assertIsNotNone(self.pending.read())
+        self.assertEqual(self.broker.request("start", self.peer).state, "reconciliation_required")
 
     def test_pending_survives_broker_reconstruction(self):
         self.pending.write({"ticket": TICKET, "uid": 501})
         restarted = self.make_broker()
         self.assertEqual(restarted.request("start", self.peer).state, "reconciliation_required")
-        self.assertEqual(restarted.disable().state, "reconciliation_required")
+        self.assertEqual(restarted.disable(), {"state": "off"})
         self.assertEqual(self.calls, [])
+        self.assertIsNotNone(self.pending.read())
 
     def test_mismatched_or_unterminated_completion_remains_pending(self):
         for proof in (Completion("b"*32, 501, True, 0), Completion(TICKET, 0, True, 0),
                       Completion(TICKET, 501, False, 0), Completion(TICKET, 501, True, True), None):
             self.pending.value = None
+            self.context = replace(self.context, requested_enabled=True)
             self.broker.execute_and_reap = lambda **request: proof
             self.assertEqual(self.broker.request("start", self.peer).state, "reconciliation_required")
             self.assertIsNotNone(self.pending.read())
-            self.assertEqual(self.broker.disable().state, "reconciliation_required")
+            self.assertEqual(self.broker.disable(), {"state": "off"})
+            self.assertIsNotNone(self.pending.read())
 
     def test_only_matching_supervisor_completion_reconciles(self):
         self.pending.write({"ticket": TICKET, "uid": 501})
         self.assertEqual(self.broker.reconcile(Completion(TICKET, 502, True, 0)).state, "reconciliation_required")
         self.assertEqual(self.broker.reconcile(Completion(TICKET, 501, True, 0)).state, "reconciled")
         self.assertEqual(self.broker.disable(), {"state": "off"})
+
+    def test_reconciliation_after_disable_cannot_reenable_protection_or_start(self):
+        self.pending.write({"ticket": TICKET, "uid": 501})
+        self.assertEqual(self.broker.disable(), {"state": "off"})
+        self.assertEqual(self.broker.reconcile(Completion(TICKET, 501, True, 0)).state, "reconciled")
+        self.assertFalse(self.context.requested_enabled)
+        self.assertEqual(self.broker.request("start", self.peer).state, "not_eligible")
+        self.assertEqual(self.calls, [])
+
+    def test_corrupt_recovery_store_cannot_prevent_explicit_disable(self):
+        with patch.object(self.pending, "read", side_effect=OSError("corrupt recovery state")) as read:
+            self.assertEqual(self.broker.disable(), {"state": "off"})
+            read.assert_not_called()
+        self.assertFalse(self.context.requested_enabled)
 
     def test_pending_clear_failure_does_not_claim_completion(self):
         original = self.pending.write
