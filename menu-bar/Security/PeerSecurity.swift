@@ -40,6 +40,41 @@ struct PeerPin {
     }
 }
 
+final class AuthorizationSession {
+    private let reference: AuthorizationRef
+    let externalData: Data
+
+    init() throws {
+        var ref: AuthorizationRef?
+        let created = AuthorizationCreate(nil, nil, [], &ref)
+        guard created == errAuthorizationSuccess, let ref else {
+            throw PeerSecurityError.authorizationDenied(created)
+        }
+        let status = ManagementAuthorization.right.withCString { name -> OSStatus in
+            var item = AuthorizationItem(name: name, valueLength: 0, value: nil, flags: 0)
+            return withUnsafeMutablePointer(to: &item) { pointer in
+                var rights = AuthorizationRights(count: 1, items: pointer)
+                return AuthorizationCopyRights(ref, &rights, nil,
+                    [.interactionAllowed, .extendRights, .preAuthorize], nil)
+            }
+        }
+        guard status == errAuthorizationSuccess else {
+            AuthorizationFree(ref, [.destroyRights])
+            throw PeerSecurityError.authorizationDenied(status)
+        }
+        var external = AuthorizationExternalForm()
+        let externalized = AuthorizationMakeExternalForm(ref, &external)
+        guard externalized == errAuthorizationSuccess else {
+            AuthorizationFree(ref, [.destroyRights])
+            throw PeerSecurityError.authorizationDenied(externalized)
+        }
+        reference = ref
+        externalData = withUnsafeBytes(of: &external) { Data($0) }
+    }
+
+    deinit { AuthorizationFree(reference, [.destroyRights]) }
+}
+
 struct ManagementAuthorization {
     // The installer must define this right as authenticate-admin. Never replace
     // an existing rule automatically. No installer/right registration is shipped.

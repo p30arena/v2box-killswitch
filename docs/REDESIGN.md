@@ -5,6 +5,11 @@ The README withdrawal warning remains in effect.
 
 ## Implemented and offline-tested
 
+- `menu-bar/Sources/V2BoxGuardHelper/`: compile-only listener/helper source with
+  pinned client identity and per-change management authorization. Fixed backend
+  status/disable calls; Enable/Reconnect refused. No backend executable, installer
+  or registration supplied. See `XPC-HELPER.md` for remaining blockers.
+- `src/backend_api.py`: status/disable internal dispatcher, no executable entrypoint.
 - `src/health.py`: pinned HTTPS target probe with an injected runner, explicit
   tunnel binding, no DNS/proxy/redirects/curlrc and pre/post ownership checks.
   Only fake-runner tests so far; no real probes or interface-binding proof.
@@ -57,8 +62,8 @@ configuration changes.
 ## Deployment blockers
 
 1. Authenticated privileged helper + signed native UI integration (see
-   `XPC-HELPER.md`). Only the client shell exists. Validate authorization and
-   signing on each supported macOS release. No arbitrary shell input.
+   `XPC-HELPER.md`). Client/helper source compiles, but trusted deployment and
+   end-to-end authorization/identity testing remain. No arbitrary shell input.
 2. Finish and validate the experimental PF driver: durable root-owned token
    storage integration, same-boot token reconciliation, complete ruleset read-back, skip/state
    interaction, preexisting states, and real macOS output/atomicity. Fake-kernel

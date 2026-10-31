@@ -5,12 +5,6 @@ import Foundation
 // no shell fallback. The service is not supplied/registered in this project yet.
 private let serviceName = "org.v2boxkillswitch.helper"
 
-@objc private protocol GuardXPCProtocol {
-    func status(_ reply: @escaping (Data?, String?) -> Void)
-    func setProtectionEnabled(_ enabled: Bool, reply: @escaping (Data?, String?) -> Void)
-    func reconnectVPN(_ reply: @escaping (Data?, String?) -> Void)
-}
-
 private final class CompletionGate {
     private let lock = NSLock()
     private var finished = false
@@ -23,7 +17,8 @@ private final class CompletionGate {
 }
 
 final class GuardClient {
-    func request(_ operation: String, enabled: Bool? = nil, completion: @escaping (Result<[String: String], Error>) -> Void) {
+    func request(_ operation: String, enabled: Bool? = nil, authorization: Data? = nil,
+                 completion: @escaping (Result<[String: String], Error>) -> Void) {
         guard #available(macOS 13.0, *),
               let hash = Bundle.main.object(forInfoDictionaryKey: "GuardHelperCDHash") as? String,
               let pin = try? PeerPin(hash) else {
@@ -70,7 +65,12 @@ final class GuardClient {
         }
         switch operation {
         case "status": proxy.status(reply)
-        case "toggle": proxy.setProtectionEnabled(enabled ?? false, reply: reply)
+        case "toggle":
+            guard let authorization else {
+                finish(.failure(ClientError.rejected("Administrator authorization is required.")))
+                return
+            }
+            proxy.setProtectionEnabled(enabled ?? false, authorization: authorization, reply: reply)
         case "reconnect": proxy.reconnectVPN(reply)
         default: finish(.failure(ClientError.unavailable))
         }
@@ -179,8 +179,16 @@ final class MenuController: NSObject, NSApplicationDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         requestGeneration += 1 // Discard status replies from before this action.
         toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
-        client.request("toggle", enabled: enable) { [weak self] result in
-            DispatchQueue.main.async { self?.actionFinished(result) }
+        do {
+            let session = try AuthorizationSession()
+            client.request("toggle", enabled: enable, authorization: session.externalData) { [weak self, session] result in
+                // Keep authorization alive until the helper reply/timeout.
+                withExtendedLifetime(session) {
+                    DispatchQueue.main.async { self?.actionFinished(result) }
+                }
+            }
+        } catch {
+            actionFinished(.failure(error))
         }
     }
 

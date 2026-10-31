@@ -25,7 +25,8 @@ No global flush or -d command is used. These tests do not validate real macOS PF
 
 ## Still release-blocking
 
-- No authenticated signed XPC listener or authorized privileged operations.
+- Pinned/authorized XPC listener source compiles, but no signed deployment,
+  operational backend executable or positive end-to-end authorization tests exist.
 - A boot-bound token journal is implemented and offline-tested; integration into
   a privileged service, trusted boot-identity acquisition and same-boot PF/kernel
   restart reconciliation are still missing. Parent state directories must be
