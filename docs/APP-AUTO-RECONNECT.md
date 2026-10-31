@@ -80,8 +80,11 @@ agent was requested. This is not a public release or general production certific
 
 Auto-reconnect is Off on app launch. The user must select **Automatically reconnect
 V2Box (this launch)** in the Guard menu and confirm. Actual checkbox state was not
-independently read. The automatic native Start call still needs a separately
-approved live test; a successful earlier one-time scutil reconnect is not that test.
+independently read. After installation, the user reported that reconnect works. This is user-observed
+live confirmation, not an independently captured or instrumented automatic Start
+test. No additional deliberate disconnect was performed. The earlier one-time
+scutil reconnect remains separate evidence; neither establishes forced-crash,
+IPv6, reboot or general recovery reliability.
 The original updater is Off-only: do NOT run it against the active guard or
 disable protection automatically to make an update possible. Independent helper-failure GUI Disable and reboot/network/
 IPv6 validation remain open. The live endpoint approval still has its existing

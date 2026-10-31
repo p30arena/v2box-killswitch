@@ -93,6 +93,8 @@ app was quit/reopened. Post-install verification established:
 
 The backup is retained privately. Actual menu checkbox selection was not read;
 auto-reconnect starts Off by code and must be explicitly enabled by the user. The
-new automatic native Start API has NOT been live-tested. Source/model tests and
-installation verification do not prove that request succeeds for this provider.
+user subsequently reported that reconnect works. This is live user confirmation,
+not an independently observed/instrumented native Start test or a forced-crash,
+IPv6 or reboot validation. Source/model tests and installation verification alone
+would not prove that request succeeds for this provider.
 The existing Off-only updater remains unchanged and must NOT be used while On.
