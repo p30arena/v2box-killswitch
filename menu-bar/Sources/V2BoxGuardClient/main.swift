@@ -11,37 +11,56 @@ private let serviceName = "org.v2boxkillswitch.helper"
     func reconnectVPN(_ reply: @escaping (Data?, String?) -> Void)
 }
 
+private final class CompletionGate {
+    private let lock = NSLock()
+    private var finished = false
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if finished { return false }
+        finished = true
+        return true
+    }
+}
+
 final class GuardClient {
     func request(_ operation: String, enabled: Bool? = nil, completion: @escaping (Result<[String: String], Error>) -> Void) {
         let connection = NSXPCConnection(machServiceName: serviceName, options: [])
         connection.remoteObjectInterface = NSXPCInterface(with: GuardXPCProtocol.self)
-        connection.invalidationHandler = { completion(.failure(ClientError.unavailable)) }
-        connection.interruptionHandler = { completion(.failure(ClientError.unavailable)) }
+        let gate = CompletionGate()
+        let finish: (Result<[String: String], Error>) -> Void = { result in
+            guard gate.claim() else { return }
+            connection.invalidationHandler = nil
+            connection.interruptionHandler = nil
+            connection.invalidate()
+            completion(result)
+        }
+        connection.invalidationHandler = { finish(.failure(ClientError.unavailable)) }
+        connection.interruptionHandler = { finish(.failure(ClientError.unavailable)) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 8) {
+            finish(.failure(ClientError.unavailable))
+        }
         connection.resume()
         guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
-            connection.invalidate()
-            completion(.failure(ClientError.unavailable))
+            finish(.failure(ClientError.unavailable))
         }) as? GuardXPCProtocol else {
-            connection.invalidate()
-            completion(.failure(ClientError.unavailable))
+            finish(.failure(ClientError.unavailable))
             return
         }
         let reply: (Data?, String?) -> Void = { data, message in
-            defer { connection.invalidate() }
-            if let message { completion(.failure(ClientError.rejected(message))) ; return }
+            if let message { finish(.failure(ClientError.rejected(message))) ; return }
             guard let data,
                   let object = try? JSONSerialization.jsonObject(with: data),
                   let result = object as? [String: String] else {
-                completion(.failure(ClientError.malformedReply))
+                finish(.failure(ClientError.malformedReply))
                 return
             }
-            completion(.success(result))
+            finish(.success(result))
         }
         switch operation {
         case "status": proxy.status(reply)
         case "toggle": proxy.setProtectionEnabled(enabled ?? false, reply: reply)
         case "reconnect": proxy.reconnectVPN(reply)
-        default: connection.invalidate(); completion(.failure(ClientError.unavailable))
+        default: finish(.failure(ClientError.unavailable))
         }
     }
 
@@ -49,7 +68,7 @@ final class GuardClient {
         case unavailable, malformedReply, rejected(String)
         var errorDescription: String? {
             switch self {
-            case .unavailable: return "Privileged helper unavailable. No system action was performed."
+            case .unavailable: return "Helper unavailable or timed out. Action outcome and protection state are unknown."
             case .malformedReply: return "Helper returned an invalid status. State is unknown."
             case .rejected(let reason): return "Helper rejected the request: \(reason)"
             }
@@ -62,7 +81,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
     private var item: NSStatusItem!
     private let actual = NSMenuItem(title: "Protection: UNAVAILABLE", action: nil, keyEquivalent: "")
     private let vpn = NSMenuItem(title: "VPN health: UNKNOWN", action: nil, keyEquivalent: "")
-    private let toggle = NSMenuItem(title: "Enable Protection…", action: #selector(toggleProtection), keyEquivalent: "")
+    private let toggle = NSMenuItem(title: "Enable Protection…", action: #selector(enableProtection), keyEquivalent: "")
+    private let disable = NSMenuItem(title: "Disable Protection…", action: #selector(disableProtection), keyEquivalent: "")
+    private var requestGeneration = 0
     private let reconnect = NSMenuItem(title: "Reconnect VPN…", action: #selector(reconnectVPN), keyEquivalent: "")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -73,8 +94,9 @@ final class MenuController: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "V2Box Guard", action: nil, keyEquivalent: ""))
         menu.addItem(actual); menu.addItem(vpn); menu.addItem(.separator())
-        toggle.target = self; reconnect.target = self
-        menu.addItem(toggle); menu.addItem(reconnect); menu.addItem(.separator())
+        toggle.target = self; disable.target = self; reconnect.target = self
+        toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
+        menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect); menu.addItem(.separator())
         let refresh = NSMenuItem(title: "Refresh Status", action: #selector(refreshStatus), keyEquivalent: "r")
         refresh.target = self; menu.addItem(refresh)
         let quit = NSMenuItem(title: "Quit (does not change protection)", action: #selector(quitApp), keyEquivalent: "q")
@@ -84,14 +106,17 @@ final class MenuController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshStatus() {
+        requestGeneration += 1
+        let generation = requestGeneration
         client.request("status") { [weak self] result in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, generation == self.requestGeneration else { return }
                 switch result {
                 case .failure(let error):
                     self.actual.title = "Protection: ERROR / UNKNOWN"
                     self.vpn.title = "VPN health: UNKNOWN"
                     self.toggle.isEnabled = false
+                    self.disable.isEnabled = false
                     self.reconnect.isEnabled = false
                     self.item.button?.title = "Guard !"
                     self.item.button?.toolTip = error.localizedDescription
@@ -101,16 +126,20 @@ final class MenuController: NSObject, NSApplicationDelegate {
                     guard ["on", "off", "error"].contains(state) else {
                         self.actual.title = "Protection: ERROR / UNKNOWN"
                         self.toggle.isEnabled = false
+                        self.disable.isEnabled = false
                         self.reconnect.isEnabled = false
                         self.item.button?.title = "Guard !"
                         return
                     }
                     self.actual.title = "Protection: \(state.uppercased())"
                     self.vpn.title = "VPN health: \(health.uppercased())"
-                    self.toggle.title = state == "on" ? "Disable Protection…" : "Enable Protection…"
+                    self.toggle.title = "Enable Protection…"
                     // Enable must remain disabled until locally approved policy is
                     // available in the helper. Status reply can explicitly grant it.
-                    self.toggle.isEnabled = data["can_toggle"] == "true"
+                    self.toggle.isEnabled = data["can_enable"] == "true" && state != "on"
+                    // Recovery remains separately available when the helper can
+                    // remove our rules even if enforcement verification failed.
+                    self.disable.isEnabled = data["can_disable"] == "true"
                     self.reconnect.isEnabled = data["can_reconnect"] == "true"
                     self.item.button?.title = state == "on" ? "Guard ●" : (state == "off" ? "Guard ○" : "Guard !")
                     self.item.button?.toolTip = "PF helper-reported state: \(state); VPN health: \(health)"
@@ -119,8 +148,10 @@ final class MenuController: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func toggleProtection() {
-        let enable = actual.title != "Protection: ON"
+    @objc private func enableProtection() { changeProtection(enable: true) }
+    @objc private func disableProtection() { changeProtection(enable: false) }
+
+    private func changeProtection(enable: Bool) {
         let alert = NSAlert()
         alert.messageText = enable ? "Enable network protection?" : "Disable protection?"
         alert.informativeText = enable
@@ -129,13 +160,30 @@ final class MenuController: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: enable ? "Enable" : "Disable")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        toggle.isEnabled = false
-        client.request("toggle", enabled: enable) { [weak self] _ in DispatchQueue.main.async { self?.refreshStatus() } }
+        requestGeneration += 1 // Discard status replies from before this action.
+        toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
+        client.request("toggle", enabled: enable) { [weak self] result in
+            DispatchQueue.main.async { self?.actionFinished(result) }
+        }
+    }
+
+    private func actionFinished(_ result: Result<[String: String], Error>) {
+        if case .failure(let error) = result {
+            let alert = NSAlert()
+            alert.messageText = "Action not confirmed"
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+        refreshStatus()
     }
 
     @objc private func reconnectVPN() {
-        reconnect.isEnabled = false
-        client.request("reconnect") { [weak self] _ in DispatchQueue.main.async { self?.refreshStatus() } }
+        requestGeneration += 1
+        toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
+        client.request("reconnect") { [weak self] result in
+            DispatchQueue.main.async { self?.actionFinished(result) }
+        }
     }
 
     @objc private func quitApp() { NSApp.terminate(nil) }

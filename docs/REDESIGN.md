@@ -16,6 +16,10 @@ The README withdrawal warning remains in effect.
 - `src/controller.py`: durable enabled/disabled intent, interprocess lock,
   serialized refresh/disable, read-back status through an injected backend.
   Tests use a fake PF backend only. No operational PF backend is supplied.
+- `src/pf_driver.py`: experimental injected-runner PF driver tested only against
+  a fake kernel. Scoped stdin anchor replacement/removal, first quick-root-gate
+  check and explicit owned-token acquisition/release. No default command runner,
+  token store, daemon or executable entrypoint is supplied.
 - `menu-bar/`: native Swift/AppKit preview and an unprivileged XPC client shell.
   Preview controls are simulated; client reports ERROR/UNKNOWN and disables actions
   with no helper. Neither is connected to operational PF controls.
@@ -36,9 +40,10 @@ configuration changes.
 1. Authenticated privileged helper + signed native UI integration (see
    `XPC-HELPER.md`). Only the client shell exists. Validate authorization and
    signing on each supported macOS release. No arbitrary shell input.
-2. Real PF backend: verify anchor ordering/reachability, atomic updates, owned
-   PF reference token persistence/release, read-back and only-project removal.
-   Handle preexisting PF states and unrelated filters; no global flush/disabling.
+2. Finish and validate the experimental PF driver: durable root-owned token
+   storage, same-boot token reconciliation, complete ruleset read-back, skip/state
+   interaction, preexisting states, and real macOS output/atomicity. Fake-kernel
+   tests cannot prove these. Do not supply an operational runner before review.
 3. Crash-consistent kernel-state/intent reconciliation and an independent local
    emergency action that works if helper/IPC dies. Mock tests do not prove this.
 4. Actual network-change monitoring and removal of stale tunnel/gateway passes.

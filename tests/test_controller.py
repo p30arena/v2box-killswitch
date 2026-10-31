@@ -19,7 +19,8 @@ class FakePF:
         self.fail_remove = False
 
     def snapshot(self):
-        return {"pf_enabled": self.other_owner or self.token, "anchor_active": self.rules is not None}
+        return {"pf_enabled": self.other_owner or self.token, "anchor_active": self.rules is not None,
+                "gate_verified": True}
 
     def replace(self, rules):
         self.calls.append("replace")
@@ -91,6 +92,14 @@ class ControllerTests(unittest.TestCase):
         self.controller.enable(CONFIG)
         self.pf.rules = None
         self.assertEqual(self.controller.status()["state"], "error")
+
+    def test_loaded_anchor_without_verified_gate_is_not_on(self):
+        self.controller.enable(CONFIG)
+        snapshot = self.pf.snapshot
+        self.pf.snapshot = lambda: {**snapshot(), "gate_verified": False}
+        self.assertEqual(self.controller.status()["state"], "error")
+        with self.assertRaises(ControllerError):
+            self.controller.refresh(CONFIG)
 
     def test_invalid_config_does_not_enable(self):
         with self.assertRaises(ValueError):

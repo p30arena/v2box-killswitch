@@ -82,7 +82,8 @@ class Controller:
     def _status(self):
         wanted = self.store.read()
         actual = self.backend.snapshot()
-        active = actual["anchor_active"] and actual["pf_enabled"]
+        active = (actual["anchor_active"] and actual["pf_enabled"]
+                  and actual.get("gate_verified", False))
         if wanted:
             state = "on" if active else "error"
         else:
@@ -126,4 +127,7 @@ class Controller:
             rules = compile_policy(config)
             self.backend.replace(rules)
             self.backend.acquire()
-            return self._status()
+            status = self._status()
+            if status["state"] != "on":
+                raise ControllerError("refreshed enforcement could not be verified")
+            return status
