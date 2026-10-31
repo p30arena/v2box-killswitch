@@ -70,8 +70,10 @@ A signed user client claiming "finished" is not supervised termination proof.
    It is only a fence. A separate [witness store/parent EXEC gate](RECOVERY-WITNESS.md)
    now implements source-only persistence ordering and broker completion handoff.
    A [read-only kernel observer](PROCESS-OBSERVER.md) independently validates staged
-   identities and is paired with the gate in fixture tests. Production launch/signing,
-   authenticated transport and restart reconciliation are not integrated.
+   identities and is paired with the gate in fixture tests. Separate
+   [artifact/connection signing policy](WORKER-SIGNING.md) is source-tested, but
+   production launch binding, authenticated transport and restart reconciliation
+   are not integrated.
    Missing witness data is NOT proof that nothing can start later.
 2. Integrate a pinned, root-owned worker with the validated
    [read-only root-to-user launch](USER-SESSION-LAUNCH.md). The

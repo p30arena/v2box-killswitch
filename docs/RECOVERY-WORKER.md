@@ -75,7 +75,9 @@ there is no VPN executor; this mode does execute the fixed read-only fixtures.
    the child witness before sending EXEC. A source-only [witness store and parent
    gate](RECOVERY-WITNESS.md) and [independent kernel observer](PROCESS-OBSERVER.md)
    are now paired with this worker ONLY in an unprivileged read-only fixture test.
-   Signed-worker trust and an authenticated production adapter are not implemented.
+   [Artifact/connection signing policy](WORKER-SIGNING.md) is now implemented
+   separately; trusted launch binding and an authenticated production adapter
+   are not integrated.
 5. EOF, cancellation, malformed control or a two-second missing EXEC cancels and
    reaps the suspended child. A running fixture has its own two-second deadline.
    Cancellation allows up to one additional second to observe actual reaping;
@@ -103,7 +105,9 @@ The per-stage deadlines are NOT an aggregate API/GUI availability guarantee.
 bash menu-bar/test-recovery-worker.sh
 ```
 
-This compiles the standalone prototype and runs 30 unprivileged native tests.
+This compiles and hardened/ad-hoc signs the standalone prototype (no entitlements)
+and runs 30 unprivileged native tests. Separate artifact/anonymous connection
+signing checks run via `bash menu-bar/test-worker-signing.sh`.
 They passed in the current Aqua/console session, including a launch with inherited
 blocked signals and ignored SIGCHLD. On a non-console/background session, positive
 handshake cases are explicitly skipped because the worker must refuse that context.

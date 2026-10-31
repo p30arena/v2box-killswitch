@@ -10,4 +10,6 @@ mkdir -p "$ROOT/.build/recovery-worker"
   "$ROOT/Sources/V2BoxGuardRecoveryWorker/ReadOnlyChildSupervisor.swift" \
   "$ROOT/Sources/V2BoxGuardRecoveryWorker/main.swift" \
   -o "$ROOT/.build/recovery-worker/V2BoxGuardRecoveryWorker"
-echo 'Built read-only recovery-worker prototype. No VPN executor. NOT installed or registered.'
+/usr/bin/codesign --force --sign - --options runtime --timestamp=none \
+  "$ROOT/.build/recovery-worker/V2BoxGuardRecoveryWorker"
+echo 'Built hardened, ad-hoc signed read-only recovery worker. No VPN executor. NOT installed or registered.'

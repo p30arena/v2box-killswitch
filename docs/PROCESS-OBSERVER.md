@@ -33,9 +33,11 @@ pending ticket. Missing PID/permission/error are UNKNOWN, never completion proof
 It provides no restart reconciliation or descendant enumeration/termination.
 
 BSD process info does not provide independent supplementary-group membership or
-bootstrap/audit-session proof. Those, signed/hardened worker integrity, trusted
-transport and exact fresh approved PF/intent/generation checks remain separate
-requirements. A live process with matching credentials is not necessarily our code.
+bootstrap/audit-session proof. A separate [source signing boundary](WORKER-SIGNING.md)
+now checks protected artifacts and accepted-connection pins/roles, but is not wired
+into a production channel. Full session/transport and fresh approved PF/intent/
+generation checks remain separate requirements. Matching credentials alone do not
+identify our code.
 Fail-closed enforcement must never depend on a user process staying stopped.
 
 The supported layout is the public proc_bsdinfo ABI used by this host's macOS 13
