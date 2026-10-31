@@ -73,8 +73,9 @@ there is no VPN executor; this mode does execute the fixed read-only fixtures.
 4. A separate matching EXEC permits resume, after another session recheck.
    A future trusted ROOT parent must independently validate and durably record
    the child witness before sending EXEC. A source-only [witness store and parent
-   gate](RECOVERY-WITNESS.md) now implement persistence ordering; they are not wired
-   to this native diagnostic or an independent observer/authenticated pipe adapter.
+   gate](RECOVERY-WITNESS.md) and [independent kernel observer](PROCESS-OBSERVER.md)
+   are now paired with this worker ONLY in an unprivileged read-only fixture test.
+   Signed-worker trust and an authenticated production adapter are not implemented.
 5. EOF, cancellation, malformed control or a two-second missing EXEC cancels and
    reaps the suspended child. A running fixture has its own two-second deadline.
    Cancellation allows up to one additional second to observe actual reaping;
@@ -102,7 +103,7 @@ The per-stage deadlines are NOT an aggregate API/GUI availability guarantee.
 bash menu-bar/test-recovery-worker.sh
 ```
 
-This compiles the standalone prototype and runs 26 unprivileged native tests.
+This compiles the standalone prototype and runs 30 unprivileged native tests.
 They passed in the current Aqua/console session, including a launch with inherited
 blocked signals and ignored SIGCHLD. On a non-console/background session, positive
 handshake cases are explicitly skipped because the worker must refuse that context.
@@ -119,8 +120,9 @@ No admin prompt, service registration, PF write, network probe or VPN command oc
   environment; never use the user-writable build artifact as a privileged executor.
 - Integrate the validated credential/bootstrap launch arrangement with the pinned
   worker; review audit-session details. The identity diagnostic alone is not an executor.
-- Integrate the source-only durable witness/gate with independently kernel-validated
-  observations and restart-safe reconciliation. A fence alone is not a child identity.
+- Integrate the source-only witness/gate and independent observer with signing,
+  trusted launch/transport, full enforcement context and restart-safe reconciliation.
+  A fence alone is not a child identity.
 - Actual fixed-command execution with ownership of every potential descendant,
   bounded cancellation, verified termination and no stale-PID signalling.
 - Shared-transaction/disabled-intent integration for EVERY intent writer and

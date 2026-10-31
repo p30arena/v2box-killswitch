@@ -7,7 +7,16 @@ import signal
 import subprocess
 import sys
 import time
+import tempfile
+import threading
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from controller import ControllerError
+from process_observer import KernelProcessObserver
+from recovery_broker import Completion
+from recovery_store import PendingCommandStore
+from recovery_witness import ChildWitnessStore, WitnessGate
 
 BINARY = str(Path(sys.argv.pop(1)).resolve())
 TICKET = "a" * 32
@@ -172,7 +181,90 @@ class WorkerTests(unittest.TestCase):
         self.assertNotEqual(staged["child_pid"], dialogue.proc.pid)
         self.assertGreater(staged["child_birth_seconds"], 0)
         self.assertLess(staged["child_birth_microseconds"], 1_000_000)
+        dialogue.staged = staged
         return staged["child_pid"]
+
+    def staging_expectations(self, dialogue, worker):
+        stage = dialogue.staged
+        return dict(worker=worker, child={"pid": stage["child_pid"],
+                    "birth_seconds": stage["child_birth_seconds"],
+                    "birth_microseconds": stage["child_birth_microseconds"]},
+                    uid=self.uid, primary_gid=os.getgid(), worker_parent_pid=os.getpid())
+
+    def test_parent_independently_observes_staged_worker_and_child(self):
+        self.require_session()
+        observer = KernelProcessObserver()
+        with ProbeDialogue("identity") as dialogue:
+            worker = observer.observe(dialogue.proc.pid).identity()
+            child = self.stage_probe(dialogue)
+            expected = self.staging_expectations(dialogue, worker)
+            observed = observer.verify_staged(**expected)
+            self.assertEqual(observed["child"], expected["child"])
+            self.assertEqual(observed["worker"], worker)
+            dialogue.send(("CANCEL " + TICKET + "\n").encode())
+            self.assert_probe_reaped(dialogue.frame(), child)
+            self.assertEqual(dialogue.finish(), 0)
+            # Missing PID remains observation failure, NOT completion proof.
+            with self.assertRaises(ControllerError): observer.observe(child)
+
+    def test_parent_rejects_reported_birth_parent_or_user_mismatch(self):
+        self.require_session()
+        observer = KernelProcessObserver()
+        with ProbeDialogue("identity") as dialogue:
+            worker = observer.observe(dialogue.proc.pid).identity()
+            child = self.stage_probe(dialogue)
+            expected = self.staging_expectations(dialogue, worker)
+            bad_child = dict(expected["child"], birth_seconds=expected["child"]["birth_seconds"] + 1)
+            for override in ({"child": bad_child}, {"worker_parent_pid": dialogue.proc.pid}, {"uid": self.uid + 1}):
+                with self.assertRaises(ControllerError): observer.verify_staged(**dict(expected, **override))
+            dialogue.send(("CANCEL " + TICKET + "\n").encode())
+            self.assert_probe_reaped(dialogue.frame(), child)
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_parent_observer_does_not_accept_resumed_child_as_staged(self):
+        self.require_session()
+        observer = KernelProcessObserver()
+        with ProbeDialogue("wait") as dialogue:
+            worker = observer.observe(dialogue.proc.pid).identity()
+            child = self.start_probe(dialogue)
+            with self.assertRaises(ControllerError):
+                observer.verify_staged(**self.staging_expectations(dialogue, worker))
+            dialogue.send(("CANCEL " + TICKET + "\n").encode())
+            self.assert_probe_reaped(dialogue.frame(), child)
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_fixture_kernel_observation_and_temp_witness_before_exec(self):
+        self.require_session()
+        # Unprivileged scratch state and FIXTURE authorization only. No real
+        # enforcement approval, code pin or authenticated production bridge.
+        observer = KernelProcessObserver()
+        with tempfile.TemporaryDirectory() as directory, threading.Lock():
+            pending = PendingCommandStore(directory, "fixture-boot", expected_uid=self.uid)
+            witness = ChildWitnessStore(directory, "fixture-boot", expected_uid=self.uid)
+            pending.write({"ticket": TICKET, "uid": self.uid})
+            with ProbeDialogue("identity") as dialogue:
+                worker = observer.observe(dialogue.proc.pid).identity()
+                child = self.stage_probe(dialogue)
+                expected = self.staging_expectations(dialogue, worker)
+                def fixture_authorization():
+                    observer.verify_staged(**expected)
+                    return True  # Read-only fixture, NOT actual PF/intent authorization.
+                gate = WitnessGate(pending, witness, fixture_authorization)
+                value = {"ticket": TICKET, "uid": self.uid, "worker": worker, "child": expected["child"]}
+                frame = gate.grant(value)
+                self.assertEqual(witness.read()["phase"], "grant_recorded")
+                dialogue.send(frame)
+                self.assertEqual(dialogue.frame()["phase"], "probe_started")
+                result = dialogue.frame()
+                self.assert_probe_reaped(result, child)
+                self.assertEqual(result["exit_code"], 0)
+                proof = gate.finish(value, Completion(TICKET, self.uid, True, result["exit_code"]))
+                self.assertTrue(proof.terminated)
+                self.assertEqual(witness.read()["phase"], "completed")
+                self.assertIsNotNone(pending.read())
+                pending.clear(TICKET, self.uid)  # Broker-owned step modeled explicitly.
+                self.assertIsNone(pending.read())
+                self.assertEqual(dialogue.finish(), 0)
 
     def start_probe(self, dialogue):
         child = self.stage_probe(dialogue)

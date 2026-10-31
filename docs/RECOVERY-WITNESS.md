@@ -31,7 +31,9 @@ A future trusted native parent/adapter must:
    its suspended-child staging frame.
 3. Independently kernel-validate worker/child identities, user credentials, parent
    relationship and worker code integrity. Reported PID/birth fields are NOT
-   sufficient; the current gate has no default observer to perform this step.
+   sufficient. An independent [read-only kernel observer](PROCESS-OBSERVER.md)
+   now checks PID/birth, real/effective/saved UID/GID, parent and stopped state.
+   Signing, supplementary groups, launch-chain binding and production wiring remain.
 4. Call `WitnessGate.grant(identity)` under the broker transaction. It requires a
    matching pending fence and fresh injected authorization. It persists the
    `grant_recorded` witness, reads it and the fence back, and rechecks authorization.
@@ -81,12 +83,14 @@ while Off can clean up state but cannot re-enable PF or authorize another comman
 26 new model/filesystem tests exercise persistence/read-back, authorization changes,
 null/duplicate/malformed/unsafe files, directory replacement, sync failures before
 and after rename, fresh-process reads, matching completion, and broker clear ordering.
-The existing 26 native worker tests still exercise real read-only fixture staging
-and reaping. These suites are separate: no trusted native witness bridge, live root
-witness write, actual VPN action, reboot, worker-crash reconciliation or power-loss
-proof is claimed.
+The native worker suite now has 30 tests, including a paired read-only fixture
+case that independently observes kernel identities and persists a temporary
+user-owned witness before EXEC. Its authorization is fixture-only, not actual
+PF/intent approval or signed-worker trust. No authenticated production bridge,
+live root witness write, VPN action, reboot, worker-crash reconciliation or
+power-loss proof is claimed.
 
-Next: implement the independent trusted kernel observer and authenticated native
-adapter, then integrate this ordering with actual lifecycle ownership and EVERY
+Next: bind/authenticate the actual native launch and transport, then integrate
+full enforcement context and this ordering with lifecycle ownership and EVERY
 intent writer. A separately approved deployment/trial is still required. The installed
 diagnostic-only app/helper, timer absence and protection settings are untouched.
