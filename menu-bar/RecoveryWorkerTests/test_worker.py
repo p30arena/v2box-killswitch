@@ -14,6 +14,58 @@ TICKET = "a" * 32
 SERVICE = "00000000-0000-0000-0000-000000000000"
 
 
+class ProbeDialogue:
+    """Private pipes to our own unprivileged diagnostic worker; no PID signalling."""
+    def __init__(self, fixture):
+        self.proc = subprocess.Popen([BINARY, "--supervise-probe", TICKET, str(os.geteuid()), fixture],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+        self.buffer = b""
+
+    def __enter__(self): return self
+
+    def frame(self, timeout=6):
+        deadline = time.monotonic() + timeout
+        with selectors.DefaultSelector() as selector:
+            selector.register(self.proc.stdout, selectors.EVENT_READ)
+            while b"\n" not in self.buffer:
+                if time.monotonic() >= deadline: raise AssertionError("worker frame deadline")
+                if selector.select(timeout=0.05):
+                    chunk = os.read(self.proc.stdout.fileno(), 4096)
+                    if not chunk: raise AssertionError("worker exited before frame")
+                    self.buffer += chunk
+                    if len(self.buffer) > 4096: raise AssertionError("oversized worker output")
+        line, self.buffer = self.buffer.split(b"\n", 1)
+        frame = json.loads(line)
+        if frame["can_execute"] is not False: raise AssertionError("VPN execution enabled")
+        if frame.get("ticket") != TICKET: raise AssertionError("mismatched worker ticket")
+        return frame
+
+    def send(self, data):
+        self.proc.stdin.write(data)
+        self.proc.stdin.flush()
+
+    def close_input(self):
+        if self.proc.stdin is not None:
+            self.proc.stdin.close(); self.proc.stdin = None
+
+    def finish(self):
+        self.close_input()
+        out, err = self.proc.communicate(timeout=4)
+        if out or self.buffer or err: raise AssertionError("unexpected trailing worker output")
+        return self.proc.returncode
+
+    def __exit__(self, *exc):
+        self.close_input()
+        try:
+            self.proc.communicate(timeout=4)
+        except subprocess.TimeoutExpired:
+            # Only our still-unreaped worker. No signalling a reported child PID.
+            self.proc.kill(); self.proc.wait(timeout=3)
+        finally:
+            for stream in (self.proc.stdout, self.proc.stderr):
+                if stream is not None: stream.close()
+
+
 class WorkerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -109,6 +161,190 @@ class WorkerTests(unittest.TestCase):
         result, frames = self.run_worker(data=("GRANT " + TICKET).encode())
         self.assertEqual(result.returncode, 0)
         self.assertEqual(frames[-1]["reason"], "parent_closed")
+
+    def stage_probe(self, dialogue):
+        self.assertEqual(dialogue.frame()["phase"], "ready")
+        dialogue.send(("GRANT " + TICKET + "\n").encode())
+        staged = dialogue.frame()
+        self.assertEqual(staged["phase"], "probe_staged")
+        self.assertIs(type(staged["child_pid"]), int)
+        self.assertGreater(staged["child_pid"], 0)
+        self.assertNotEqual(staged["child_pid"], dialogue.proc.pid)
+        self.assertGreater(staged["child_birth_seconds"], 0)
+        self.assertLess(staged["child_birth_microseconds"], 1_000_000)
+        return staged["child_pid"]
+
+    def start_probe(self, dialogue):
+        child = self.stage_probe(dialogue)
+        dialogue.send(("EXEC " + TICKET + "\n").encode())
+        started = dialogue.frame()
+        self.assertEqual(started["phase"], "probe_started")
+        self.assertEqual(started["child_pid"], child)
+        return child
+
+    def assert_probe_reaped(self, frame, child):
+        self.assertEqual(frame["phase"], "probe_finished")
+        self.assertIs(frame["child_terminated"], True)
+        self.assertEqual(frame["child_pid"], child)
+        # Signal ZERO is a read-only existence check, not a kill. PID reuse would
+        # fail this conservative assertion, never cause us to signal another PID.
+        with self.assertRaises(ProcessLookupError): os.kill(child, 0)
+
+    def test_staged_identity_cannot_run_before_second_execution_grant(self):
+        self.require_session()
+        with ProbeDialogue("identity") as dialogue:
+            child = self.stage_probe(dialogue)
+            time.sleep(0.05)
+            state = subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(child)],
+                                   capture_output=True, text=True, timeout=2)
+            self.assertEqual(state.returncode, 0)
+            self.assertTrue(state.stdout.strip().startswith("T"), "fixture was not suspended")
+            dialogue.send(("EXEC " + TICKET + "\n").encode())
+            self.assertEqual(dialogue.frame()["phase"], "probe_started")
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["exit_code"], 0)
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_cancel_staged_child_never_resumes_it(self):
+        self.require_session()
+        with ProbeDialogue("identity") as dialogue:
+            child = self.stage_probe(dialogue)
+            dialogue.send(("CANCEL " + TICKET + "\n").encode())
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "cancelled_by_parent")
+            self.assertEqual(frame["exit_code"], -signal.SIGKILL)
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_parent_eof_with_staged_child_cancels_and_reaps(self):
+        self.require_session()
+        with ProbeDialogue("identity") as dialogue:
+            child = self.stage_probe(dialogue)
+            dialogue.close_input()
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "parent_closed")
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_missing_execution_grant_reaps_staged_child(self):
+        self.require_session()
+        with ProbeDialogue("identity") as dialogue:
+            child = self.stage_probe(dialogue)
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "execution_grant_timeout")
+            self.assertEqual(frame["exit_code"], -signal.SIGKILL)
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_wrong_execution_grant_cancels_staged_child(self):
+        self.require_session()
+        with ProbeDialogue("identity") as dialogue:
+            child = self.stage_probe(dialogue)
+            dialogue.send(("EXEC " + "b"*32 + "\n").encode())
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "invalid_control")
+            self.assertEqual(dialogue.finish(), 2)
+
+    def test_supervised_identity_child_exits_and_is_reaped(self):
+        self.require_session()
+        with ProbeDialogue("identity") as dialogue:
+            child = self.start_probe(dialogue)
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "probe_exited")
+            self.assertEqual(frame["exit_code"], 0)
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_supervised_cancel_reaps_only_owned_child(self):
+        self.require_session()
+        with ProbeDialogue("wait") as dialogue:
+            child = self.start_probe(dialogue)
+            dialogue.send(("CANCEL " + TICKET + "\n").encode())
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "cancelled_by_parent")
+            self.assertEqual(frame["exit_code"], -signal.SIGKILL)
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_supervised_parent_eof_cancels_and_reaps(self):
+        self.require_session()
+        with ProbeDialogue("wait") as dialogue:
+            child = self.start_probe(dialogue)
+            dialogue.close_input()
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "parent_closed")
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_supervised_deadline_cancels_and_reaps(self):
+        self.require_session()
+        with ProbeDialogue("wait") as dialogue:
+            child = self.start_probe(dialogue)
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "probe_timeout")
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_supervised_invalid_control_cannot_select_pid_or_spawn_again(self):
+        self.require_session()
+        for data in (("CANCEL " + "b"*32 + "\n").encode(), b"KILL 1\n", b"x"*65,
+                     ("GRANT " + TICKET + "\n").encode()):
+            with ProbeDialogue("wait") as dialogue:
+                child = self.start_probe(dialogue)
+                dialogue.send(data)
+                frame = dialogue.frame()
+                self.assert_probe_reaped(frame, child)
+                self.assertEqual(frame["reason"], "invalid_control")
+                self.assertEqual(dialogue.finish(), 2)
+
+    def test_supervised_fragmented_cancel_is_bounded_and_reaped(self):
+        self.require_session()
+        with ProbeDialogue("wait") as dialogue:
+            child = self.start_probe(dialogue)
+            dialogue.send(b"CAN")
+            time.sleep(0.03)
+            dialogue.send(("CEL " + TICKET + "\n").encode())
+            frame = dialogue.frame()
+            self.assert_probe_reaped(frame, child)
+            self.assertEqual(frame["reason"], "cancelled_by_parent")
+            self.assertEqual(dialogue.finish(), 0)
+
+    def test_supervised_closed_output_still_reaps_child_before_exit(self):
+        self.require_session()
+        with ProbeDialogue("wait") as dialogue:
+            child = self.start_probe(dialogue)
+            dialogue.proc.stdout.close()
+            dialogue.send(("CANCEL " + TICKET + "\n").encode())
+            self.assertEqual(dialogue.proc.wait(timeout=4), 3)
+            with self.assertRaises(ProcessLookupError): os.kill(child, 0)
+            # communicate cannot read a deliberately closed stream.
+            dialogue.proc.stdout = None
+
+    def test_output_loss_at_execution_grant_still_reaps_owned_child(self):
+        self.require_session()
+        with ProbeDialogue("wait") as dialogue:
+            child = self.stage_probe(dialogue)
+            dialogue.proc.stdout.close()
+            dialogue.send(("EXEC " + TICKET + "\n").encode())
+            self.assertEqual(dialogue.proc.wait(timeout=4), 3)
+            with self.assertRaises(ProcessLookupError): os.kill(child, 0)
+            dialogue.proc.stdout = None
+
+    def test_parent_eof_before_fixture_grant_never_stages_child(self):
+        self.require_session()
+        args = [BINARY, "--supervise-probe", TICKET, str(self.uid), "identity"]
+        result, frames = self.run_worker(args)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual([frame["phase"] for frame in frames], ["ready", "cancelled"])
+        self.assertTrue(all("child_pid" not in frame for frame in frames))
+
+    def test_supervision_only_accepts_fixed_read_only_fixtures(self):
+        for fixture in ("start", "stop", "/bin/sh", "sleep 100", "1"):
+            result, frames = self.run_worker([BINARY, "--supervise-probe", TICKET, str(self.uid), fixture])
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(frames[-1]["reason"], "invalid_request")
 
     def test_no_grant_times_out_while_parent_pipe_remains_open(self):
         self.require_session()

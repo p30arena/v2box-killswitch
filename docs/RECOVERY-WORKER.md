@@ -1,7 +1,8 @@
 # Read-only native recovery worker — not a VPN executor
 
 `menu-bar/Sources/V2BoxGuardRecoveryWorker/main.swift` implements session identity
-checks and a bounded pre-execution pipe handshake. It is not installed, registered,
+checks, a pre-execution pipe handshake, and direct-child supervision for fixed
+read-only fixtures in `ReadOnlyChildSupervisor.swift`. It is not installed, registered,
 packaged in the development kit, or called by the app/helper. This is NOT the
 completed trusted supervisor. It has no scutil or other VPN execution path.
 
@@ -22,7 +23,7 @@ now validates an asuser/sudo launch arrangement with Apple system identity queri
 It does not launch/deploy this worker or provide a VPN executor. These worker
 checks do not independently attest all audit-session properties.
 
-Only two fixed read-only launchctl commands can be spawned. stdin is /dev/null,
+Identity checks use only two fixed read-only launchctl commands. stdin is /dev/null,
 stdout is captured privately, stderr discarded, environment fixed, and unrelated
 FDs closed. Children are reaped before Ready. The worker clears an inherited
 blocked signal mask and restores default SIGCHLD handling; it must not rely on a
@@ -35,7 +36,7 @@ and reconciliation; these identity checks alone do not guarantee GUI availabilit
 
 ## Handshake
 
-The read-only probe accepts `--probe-session <uid>`. The prepared handshake uses
+The read-only probe accepts `--probe-session <uid>`. The `--prepare` handshake uses
 only an internal ticket, UID, start/stop enum and registered service UUID. These
 arguments are NOT authenticated XPC requests or proof of approval.
 
@@ -54,18 +55,62 @@ starts. A future actual executor must revalidate identity at the execution bound
 and implement full descendant ownership/cancellation; killing a worker is not
 proof about hypothetical future VPN descendants.
 
+## Direct-child fixture supervision
+
+The separate `--supervise-probe <ticket> <uid> identity|wait` diagnostic can run
+ONLY `/usr/bin/id -u` or `/bin/sleep 10`. It cannot accept a caller executable,
+argv, PID, process group, shell, service or VPN action. `can_execute=false` means
+there is no VPN executor; this mode does execute the fixed read-only fixtures.
+
+1. The parent sends a matching GRANT after Ready.
+2. After a fresh session check, `posix_spawn` creates the fixture with
+   `POSIX_SPAWN_START_SUSPENDED`. macOS documents that user-space execution,
+   including dyld startup, has not begun.
+3. The worker reports `probe_staged` with its exact child's PID and kernel birth
+   seconds/microseconds. UID/GID and parent PID are checked through the public
+   `proc_pidinfo(PROC_PIDTBSDINFO)` API. These are correlation data, NOT authority
+   to signal an arbitrary process after restart.
+4. A separate matching EXEC permits resume, after another session recheck.
+   A future trusted ROOT parent must independently validate and durably record
+   the child witness before sending EXEC. This diagnostic does NOT implement
+   that persistence or authenticate its pipe caller.
+5. EOF, cancellation, malformed control or a two-second missing EXEC cancels and
+   reaps the suspended child. A running fixture has its own two-second deadline.
+   Cancellation allows up to one additional second to observe actual reaping;
+   inability to do so reports `supervision_unknown`, never termination proof.
+
+Only the PID returned by this worker's own posix_spawn may receive SIGCONT or
+SIGKILL. It is signalled only while still owned and unreaped, with default SIGCHLD
+handling and sole wait ownership preventing PID reuse. Ownership errors latch
+unknown; no later observation may restore signalling authority. No process-group
+signal or caller-reported PID is used. Exit acknowledgements follow waitpid,
+not merely a successful kill. Broken output is handled without skipping cleanup.
+
+This is a cooperative diagnostic protocol, not an authorization barrier against
+the user who owns these processes (that user can independently signal/resume them).
+Do not rely on a stopped user process for fail-closed PF enforcement. Actual VPN
+CLI descendant behavior, hardened worker integrity and restart recovery remain
+unverified. Parent EOF while the worker survives is NOT worker-crash cleanup.
+Killing the worker or losing its output is NOT proof the child terminated, and
+must not clear a future pending ticket. No durable child witness is installed.
+The per-stage deadlines are NOT an aggregate API/GUI availability guarantee.
+
 ## Tests and build
 
 ```sh
 bash menu-bar/test-recovery-worker.sh
 ```
 
-This compiles the standalone prototype and runs 11 unprivileged native tests.
+This compiles the standalone prototype and runs 26 unprivileged native tests.
 They passed in the current Aqua/console session, including a launch with inherited
 blocked signals and ignored SIGCHLD. On a non-console/background session, positive
 handshake cases are explicitly skipped because the worker must refuse that context.
-These are read-only native identity checks, not fake-only tests or VPN validation.
-No admin prompt, service registration, PF write, network probe, start or stop occurs.
+These exercise real fixed child launch/suspension, reaping after normal exit,
+cancellation/EOF before and after resume, missing EXEC, malformed control, timeout,
+and broken output both at resume and after start. A kernel ps state observation
+confirms the identity fixture remains stopped before EXEC. These are not VPN,
+worker-crash, reboot or general descendant-supervision validation.
+No admin prompt, service registration, PF write, network probe or VPN command occurs.
 
 ## Still required before integration
 

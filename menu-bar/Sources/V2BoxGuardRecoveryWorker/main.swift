@@ -6,21 +6,30 @@ import SystemConfiguration
 // Not installed, registered or invoked by the app/helper. Read-only launchctl
 // children verify bootstrap identity; both are reaped before emitting Ready.
 
-func emit(_ phase: String, reason: String? = nil, ticket: String? = nil, uid: UInt32? = nil) {
+@discardableResult
+func emit(_ phase: String, reason: String? = nil, ticket: String? = nil, uid: UInt32? = nil,
+          childPID: pid_t? = nil, terminated: Bool? = nil, exitCode: Int? = nil,
+          birthSeconds: UInt64? = nil, birthMicroseconds: UInt64? = nil) -> Bool {
     var message: [String: Any] = ["version": 1, "phase": phase, "can_execute": false]
     if let reason { message["reason"] = reason }
     if let ticket { message["ticket"] = ticket }
     if let uid { message["uid"] = uid }
-    guard var data = try? JSONSerialization.data(withJSONObject: message, options: [.sortedKeys]) else { exit(2) }
+    if let childPID { message["child_pid"] = childPID }
+    if let terminated { message["child_terminated"] = terminated }
+    if let exitCode { message["exit_code"] = exitCode }
+    if let birthSeconds { message["child_birth_seconds"] = birthSeconds }
+    if let birthMicroseconds { message["child_birth_microseconds"] = birthMicroseconds }
+    guard var data = try? JSONSerialization.data(withJSONObject: message, options: [.sortedKeys]) else { return false }
     data.append(10)
-    data.withUnsafeBytes { raw in
+    return data.withUnsafeBytes { raw in
         var offset = 0
         while offset < raw.count {
             let written = Darwin.write(STDOUT_FILENO, raw.baseAddress!.advanced(by: offset), raw.count - offset)
             if written < 0 && errno == EINTR { continue }
-            guard written > 0 else { _exit(3) }
+            guard written > 0 else { return false }
             offset += written
         }
+        return true
     }
 }
 
@@ -171,6 +180,23 @@ if args.count == 3 && args[1] == "--probe-session" {
     emit("identity_verified", uid: uid)
     exit(0)
 }
+if args.count == 5 && args[1] == "--supervise-probe" {
+    guard args[2].range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil,
+          let uid = uidArgument(args[3]), let fixture = ProbeFixture(rawValue: args[4]) else { reject("invalid_request") }
+    let ticket = args[2]
+    guard verifiedSession(uid) else { reject("session_unverified", ticket: ticket) }
+    guard emit("ready", ticket: ticket, uid: uid) else { exit(3) }
+    switch readControl() {
+    case .closed: emit("cancelled", reason: "parent_closed", ticket: ticket, uid: uid)
+    case .timeout: emit("cancelled", reason: "grant_timeout", ticket: ticket, uid: uid)
+    case .invalid: reject("invalid_control", ticket: ticket)
+    case .line(let line):
+        if line == "GRANT " + ticket { exit(superviseProbe(fixture, ticket: ticket, uid: uid)) }
+        if line == "CANCEL " + ticket { emit("cancelled", reason: "cancelled_by_parent", ticket: ticket, uid: uid) }
+        else { reject("invalid_control", ticket: ticket) }
+    }
+    exit(0)
+}
 guard args.count == 6, args[1] == "--prepare",
       args[2].range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil,
       let uid = uidArgument(args[3]), ["start", "stop"].contains(args[4]),
@@ -179,7 +205,7 @@ guard args.count == 6, args[1] == "--prepare",
 }
 let ticket = args[2]
 guard verifiedSession(uid) else { reject("session_unverified", ticket: ticket) }
-emit("ready", ticket: ticket, uid: uid)
+guard emit("ready", ticket: ticket, uid: uid) else { exit(3) }
 switch readControl() {
 case .closed: emit("cancelled", reason: "parent_closed", ticket: ticket, uid: uid)
 case .timeout: emit("cancelled", reason: "grant_timeout", ticket: ticket, uid: uid)

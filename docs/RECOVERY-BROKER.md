@@ -71,7 +71,9 @@ A signed user client claiming "finished" is not supervised termination proof.
    proof that nothing can start later.
 2. Integrate a pinned, root-owned worker with the validated
    [read-only root-to-user launch](USER-SESSION-LAUNCH.md). The
-   [native worker](RECOVERY-WORKER.md) deliberately cannot execute VPN commands.
+   [native worker](RECOVERY-WORKER.md) now supervises fixed read-only fixtures,
+   including suspended staging, explicit resume, cancellation and reaping. It
+   deliberately cannot execute VPN commands or persist a root lifecycle witness.
 3. Implement actual fixed-command execution under the correct user's credentials
    and bootstrap/audit session, descendant ownership, bounded cancellation and
    restart reconciliation without stale-PID/unrelated-process signalling.
