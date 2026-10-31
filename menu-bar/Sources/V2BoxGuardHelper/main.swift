@@ -2,7 +2,7 @@ import Foundation
 import Security
 import Darwin
 
-// Development helper source. No installer, launchd registration or refresh loop.
+// Development helper source. No automatic installation or launchd registration.
 // Backend and pins must be installed by a reviewed installer before use.
 let backendPath = "/Library/PrivilegedHelperTools/org.v2boxkillswitch.backend"
 let pinPath = "/Library/Application Support/V2BoxGuard/client-pin"
@@ -41,7 +41,7 @@ enum GuardError: Error { case unavailable }
 
 final class FixedBackend {
     func call(_ operation: String) throws -> Data {
-        guard ["status", "disable"].contains(operation) else { throw GuardError.unavailable }
+        guard ["status", "enable", "disable", "refresh"].contains(operation) else { throw GuardError.unavailable }
         _ = try trustedFile(backendPath, executable: true)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: backendPath)
@@ -70,6 +70,21 @@ final class FixedBackend {
 final class GuardService: NSObject, GuardXPCProtocol {
     private let queue = DispatchQueue(label: "org.v2boxkillswitch.operations")
     private let backend = FixedBackend()
+    private var timer: DispatchSourceTimer?
+
+    override init() {
+        super.init()
+        // Backend refresh reads durable intent before doing any PF updates.
+        // It cannot undo Disable; both operations use this same serial queue.
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + 10, repeating: 10)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            _ = try? self.backend.call("refresh")
+        }
+        timer.resume()
+        self.timer = timer
+    }
 
     func status(_ reply: @escaping (Data?, String?) -> Void) {
         queue.async {
@@ -83,11 +98,7 @@ final class GuardService: NSObject, GuardXPCProtocol {
         queue.async {
             do {
                 try ManagementAuthorization.verify(authorization)
-                guard !enabled else {
-                    reply(nil, "Enable is not implemented: PF safety prerequisites remain unverified.")
-                    return
-                }
-                reply(try self.backend.call("disable"), nil)
+                reply(try self.backend.call(enabled ? "enable" : "disable"), nil)
             } catch {
                 reply(nil, "Authorization or backend operation failed; protection state is unknown.")
             }

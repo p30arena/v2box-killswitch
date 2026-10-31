@@ -1,99 +1,81 @@
-# Replacement status — development only
+# Replacement status — experimental, uninstalled development kit
 
-No operational replacement is available. Do not install legacy scripts or plists.
-The README withdrawal warning remains in effect.
+The original release remains withdrawn. Do not install legacy scripts or plists.
+The replacement now has executable Enable/Disable/Refresh paths, but has NOT been
+installed or end-to-end tested. It is not release-ready or a verified kill switch.
 
-## Implemented and offline-tested
+## Components
 
-- `menu-bar/Sources/V2BoxGuardHelper/`: compile-only listener/helper source with
-  pinned client identity and per-change management authorization. Fixed backend
-  status/disable calls; Enable/Reconnect refused. No backend executable, installer
-  or registration supplied. See `XPC-HELPER.md` for remaining blockers.
-- `src/backend_api.py`: status/disable internal dispatcher, no executable entrypoint.
-- `src/health.py`: pinned HTTPS target probe with an injected runner, explicit
-  tunnel binding, no DNS/proxy/redirects/curlrc and pre/post ownership checks.
-  Only fake-runner tests so far; no real probes or interface-binding proof.
-  Unsupported curl/configuration errors return unverified, not unhealthy.
-- `src/recovery.py`: fake-clock-tested recovery state machine with bounded retry
-  bursts, exponential backoff/cooldown, transition timeout and repeated unusable
-  health evidence. No restarts on merely unverified health; networking actions
-  require fresh verified enforcement. No daemon or probe integration supplied.
-- `src/vpn_commands.py`: UUID-only native scutil adapter with injected runner and
-  command deadlines. Tested only with fake commands; not executed on this Mac.
-- `src/policy.py`: deterministic, interface-scoped outbound policy compiler;
-  explicit numeric endpoint set, TCP/UDP and IPv6; explicit optional LAN subnets;
-  exact gateway exceptions. No system operations.
-- `src/coordinator.py`: unknown/expired approval or invalid snapshots request
-  quarantine through the serialized controller, revoking endpoint/tunnel/LAN
-  grants while preserving validated router/bootstrap exceptions. Invalid router
-  data falls back to loopback + deny. Explicit Disable still wins. Tests use only
-  a fake PF kernel. No monitoring loop or live activation is provided.
-- `src/gateways.py`: read-only scoped IPv4 gateway discovery; on-link validation;
-  detects an observed route change during the snapshot. No DNS or PF operations.
-- `src/endpoints.py`: explicit profile inventories with revisions and expiry;
-  new profile replaces old endpoint set rather than accumulating permissions.
-  Unknown or expired endpoints require approval. No automatic DNS bootstrap.
-- `src/controller.py`: durable enabled/disabled intent, interprocess lock,
-  serialized refresh/disable, read-back status through an injected backend.
-  Tests use a fake PF backend only. No operational PF backend is supplied.
-- `src/pf_driver.py`: experimental injected-runner PF driver tested only against
-  a fake kernel. Scoped stdin anchor replacement/removal, first quick-root-gate
-  check and explicit owned-token acquisition/release. No default command runner,
-  daemon or executable entrypoint is supplied.
-- `src/token_store.py`: boot-bound, atomic token journal using directory-relative
-  file operations, ownership/mode validation and symlink/hardlink rejection.
-  Tested in temporary directories; not installed as privileged state.
-- `menu-bar/`: native Swift/AppKit preview and an unprivileged XPC client shell.
-  Preview controls are simulated; client reports ERROR/UNKNOWN and disables actions
-  with no helper. Neither is connected to operational PF controls.
+- `src/policy.py`: deterministic, interface-scoped IPv4/IPv6 rules; explicit TCP/UDP
+  peers, optional LAN subnets, exact router exceptions and quarantine generation.
+- `src/gateways.py`: read-only scoped IPv4 router discovery across physical ports.
+- `src/endpoints.py`: approved profile inventory with explicit IPs/revisions/expiry.
+- `src/coordinator.py`: revoke stale tunnel/peer grants on approval/discovery errors.
+- `src/controller.py`: durable disable intent and serialization with refresh.
+- `src/pf_driver.py`: scoped PF operations, canonical read-back, owned enable token.
+- `src/token_store.py`: boot-bound atomic token journal; unknown token outcomes
+  require reconciliation rather than silently acquiring more enable references.
+- `src/runtime.py`: root-only executable entrypoint with fixed trusted paths;
+  discovery, preflight, Enable/Disable/Refresh and status capability checks.
+- `src/recovery.py`, `src/vpn_commands.py`, `src/health.py`: tested recovery/health
+  components, not integrated into an installed user-session recovery agent.
+- Native menu-bar client/helper: mutual exact-build XPC pinning, management
+  authorization for protection changes, serialized timer refresh and fixed backend
+  calls. Reconnect is still refused pending authenticated user-session integration.
+- Development-kit builder: local ad-hoc signing, mutually pinned artifacts,
+  root-backend zipapp and explicit management-right provisioning utility. Build
+  scripts never install, register or launch any of these components.
 
-## Endpoint changes: important unresolved constraint
+## Actual safety gates
 
-It is impossible to infer an arbitrary new server address from nothing while all
-traffic needed to retrieve that address is denied. Unrestricted DNS, HTTPS or
-process-socket discovery is not an acceptable substitute for explicit trust.
-Preapproved addresses allow rotation within that set. Changes outside that set
-need local approval or a separately authenticated, narrowly permitted bootstrap
-channel. The coordinator enters quarantine on approval failure rather than
-retaining the prior endpoint grants. This implementation supplies neither a trusted update channel nor an
-approval UI yet. It does not claim fully automatic recovery for arbitrary remote
-configuration changes.
+Enable requires reviewed root-owned configuration, a current approved peer set,
+unique current tunnel descriptor when connected, physical-router discovery, a
+first quick root anchor, no preexisting PF states, no skip interfaces, no legacy
+root refresher, successful syntax validation and complete canonical rule read-back.
+Failed updates request quarantine; explicit Disable persists before anchor removal.
+No global flush or `pfctl -d` is used by the new backend.
 
-## Deployment blockers
+The root anchor syntax was checked non-activating on this Mac:
+`anchor "com.p30arena.v2box-killswitch" quick` canonicalizes to
+`anchor "com.p30arena.v2box-killswitch" quick all`. Previous fake fixtures had an
+incorrect ordering; the driver now recognizes the observed syntax.
 
-1. Authenticated privileged helper + signed native UI integration (see
-   `XPC-HELPER.md`). Client/helper source compiles, but trusted deployment and
-   end-to-end authorization/identity testing remain. No arbitrary shell input.
-2. Finish and validate the experimental PF driver: durable root-owned token
-   storage integration, same-boot token reconciliation, complete ruleset read-back, skip/state
-   interaction, preexisting states, and real macOS output/atomicity. Fake-kernel
-   tests cannot prove these. Do not supply an operational runner before review.
-3. Crash-consistent kernel-state/intent reconciliation and an independent local
-   emergency action that works if helper/IPC dies. Mock tests do not prove this.
-4. Actual network-change monitoring and removal of stale tunnel/gateway passes.
-   Interface name reuse must not grant traffic to another VPN's tunnel.
-5. Endpoint approval UI and trusted update design; explicit errors instead of
-   appearing healthy when approval or bootstrap is unavailable.
-6. IPv6 gateway discovery and real DHCP renewal/ND tests. The draft compiler's
-   bootstrap rules do not yet cover every renewal or network topology.
-7. Validate the draft health probe's binding with packet captures and integrate
-   serialized recovery with current provider-identity checks,
-   privacy-safe transition logging, user-session native command permissions, and
-   preservation of backoff across service restarts. Then run packet captures
-   on supported macOS versions, with health tests, endpoint
-   changes, profile switching, sleep/wake, watchdog failures, and boot timing.
-   Never claim protection across boot before measurement.
+## Endpoint changes — unsolved trust/bootstrap constraint
 
-Router access is a deliberate bypass: allowing all protocols to a router permits
-DNS to that router and access to a router-hosted proxy. It is not a process-only
-exception. An ICMP/admin-ports-only router policy may be offered separately.
+A preapproved set supports rotation within it. Arbitrary new server addresses
+require local approval or a separately authenticated bootstrap/update channel.
+No such channel or endpoint approval UI is provided yet. No general DNS exception
+is introduced. Unknown/expired profiles quarantine, not transparently reconnect.
+Automatic profile detection from V2Box is also not integrated: the selected profile
+in the reviewed config is authoritative.
 
-## Local checks (no activation)
+## Release blockers
+
+- No installation, activation, live authorization/pinned-peer handshake or packet
+  captures have been performed for the replacement.
+- No authenticated user-session reconnect agent integration; the menu reconnect
+  operation deliberately reports unavailable.
+- Same-boot PF reset/token reconciliation is incomplete. A different-boot journal
+  is rejected rather than reused. Boot-time gap/protection is NOT proven.
+- Timeout/crash recovery across helper/backend and emergency action when the
+  helper is unavailable still need independent validation.
+- IPv6 router discovery, full DHCP renewal coverage, tunnel identity guarantees,
+  interface-name reuse and interaction with unrelated PF/security software need
+  review and testing. Descriptor matching is not cryptographic provider identity.
+- Ad-hoc local signing is not notarized public distribution. Explicit repinning
+  is required after updates; there is no reviewed updater/uninstaller yet.
+
+Router access is intentional direct-network permission: all protocols to that
+router includes DNS or a router-hosted proxy. It does not permit the entire LAN.
+
+## Non-activating checks/build
 
 ```sh
 python3 -m unittest discover -s tests -v
-bash menu-bar/build-preview.sh
+bash menu-bar/test-security.sh
+python3 tools/build_development_kit.py
 ```
 
-Tests write only temporary state. The build writes only ignored `.build` output.
-Neither command launches the preview, installs jobs, or changes PF/VPN settings.
+All output is confined to temporary files or ignored `.build` directories. Building
+the development kit does local ad-hoc signing only; it does not install services,
+change authorization rights, load PF or launch any app/helper/backend.

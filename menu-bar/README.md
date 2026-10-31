@@ -30,7 +30,9 @@ bash menu-bar/package-preview.sh
 Output: `menu-bar/.build/V2BoxGuardPreview.app`. This is visibly DEMO and still
 has simulated controls only.
 
-The privileged controller described in `../docs/MENU-BAR.md` remains unimplemented.
+The original preview remains simulated. A separate experimental client/helper/backend
+implementation now exists; see [`../docs/DEVELOPMENT-KIT.md`](../docs/DEVELOPMENT-KIT.md).
+It is not installed or end-to-end validated.
 
 An unprivileged XPC-client shell can be packaged with:
 

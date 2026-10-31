@@ -35,7 +35,7 @@ class Kernel:
         if command == ["-sr"]: out = self.root
         elif command == ["-s", "info"]: out = "Status: " + ("Enabled" if self.enabled else "Disabled") + " for 0 days\n"
         elif command == ["-a", ANCHOR, "-sr"]: out = self.rules
-        elif command == ["-n", "-a", ANCHOR, "-f", "-"]: pass
+        elif command == ["-n", "-v", "-a", ANCHOR, "-f", "-"]: out = input
         elif command == ["-a", ANCHOR, "-f", "-"]: self.rules = input
         elif command == ["-E"]: self.enabled = True; err = self.token_output
         elif command == ["-X", "12345"]: pass  # another owner keeps PF enabled
@@ -101,7 +101,7 @@ class DriverTests(unittest.TestCase):
         self.assertFalse(any(args == ["-E"] for args, _ in self.kernel.calls))
 
     def test_syntax_failure_does_not_replace(self):
-        self.kernel.fail = ["-n", "-a", ANCHOR, "-f", "-"]
+        self.kernel.fail = ["-n", "-v", "-a", ANCHOR, "-f", "-"]
         with self.assertRaises(ControllerError): self.driver.replace(compile_policy(CONFIG))
         self.assertEqual(self.kernel.rules, "")
 

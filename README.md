@@ -37,9 +37,11 @@ The scripts and configuration are preserved for incident analysis only. They are
 
 ## Replacement development
 
-An offline-only redesign is being developed. See [development status](docs/REDESIGN.md)
-and [menu-bar requirements](docs/MENU-BAR.md). Passing mock tests does not make it
-safe to deploy. The menu-bar preview has simulated controls, not firewall controls.
+An experimental replacement is being developed. See [development status](docs/REDESIGN.md)
+and the [uninstalled development kit](docs/DEVELOPMENT-KIT.md). The client/helper/backend
+Enable/Disable paths are implemented but have not been deployed or validated end-to-end.
+Passing mock tests does not make them safe to deploy. The separate DEMO preview still
+has simulated controls only. The withdrawal warning remains in effect.
 
 ## License
 

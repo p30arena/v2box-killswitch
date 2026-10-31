@@ -25,13 +25,15 @@ No global flush or -d command is used. These tests do not validate real macOS PF
 
 ## Still release-blocking
 
-- Pinned/authorized XPC listener source compiles, but no signed deployment,
-  operational backend executable or positive end-to-end authorization tests exist.
+- A signed, mutually pinned development kit and executable backend now build.
+  Nothing is deployed; no positive end-to-end authorization tests exist.
 - A boot-bound token journal is implemented and offline-tested; integration into
   a privileged service, trusted boot-identity acquisition and same-boot PF/kernel
   restart reconciliation are still missing. Parent state directories must be
   trusted; fsync/atomic replace alone does not prove power-loss durability.
-- Real PF state/skip behavior and complete rule equality verification untested.
+- Runtime preflight refuses preexisting PF states/skip flags and the driver now
+  compares complete canonical rule output after load. Mutation/read-back is tested
+  only with a fake kernel. Native macOS syntax checks do not prove live behavior.
 - No automatic endpoint-update trust/bootstrap mechanism or approval interface.
 - No reliable emergency GUI path when the privileged service fails.
 - No end-to-end network-change monitoring, health recovery, or boot proof.

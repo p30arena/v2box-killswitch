@@ -1,9 +1,9 @@
-"""Experimental PF driver. No default command runner and no executable entrypoint.
+"""Experimental scoped PF driver, with an explicitly injected command runner.
 
-Only fake-kernel tests currently exercise this code. Not an operational backend:
-prior states, global skip settings, restart reconciliation and authenticated
-privileged integration remain deployment blockers. Caller must hold controller
-lock and provide trusted durable token storage and a trusted runner.
+Only fake-kernel tests exercise mutation so far. Runtime integration is provided
+by runtime.py but is not installed or live-validated. Restart reconciliation and
+end-to-end validation remain deployment blockers. Caller must serialize access
+and provide trusted durable token storage and a trusted runner.
 """
 import re
 from controller import ControllerError
@@ -28,7 +28,8 @@ class PFDriver:
         # final deny. Reject earlier filters rather than guessing their effects.
         root = self._call("-sr")
         lines = [x.strip() for x in root.splitlines() if x.strip() and not x.startswith("#")]
-        return bool(lines and lines[0] == f'anchor "{ANCHOR}" all quick')
+        return bool(lines and re.fullmatch(
+            r'anchor "' + re.escape(ANCHOR) + r'" (?:quick|quick all|all quick)', lines[0]))
 
     def snapshot(self):
         info = self._call("-s", "info")
@@ -47,11 +48,13 @@ class PFDriver:
         if not rules.endswith('block drop out quick all label "v2box_default_deny"\n'):
             raise ControllerError("missing final default deny")
         # stdin avoids writable temporary rule paths. Never reload /etc/pf.conf.
-        self._call("-n", "-a", ANCHOR, "-f", "-", text=rules)
+        expected = self._call("-n", "-v", "-a", ANCHOR, "-f", "-", text=rules)
+        if not expected.strip():
+            raise ControllerError("PF did not return canonical rules")
         self._call("-a", ANCHOR, "-f", "-", text=rules)
         observed = self._call("-a", ANCHOR, "-sr")
-        if 'label "v2box_default_deny"' not in observed:
-            raise ControllerError("PF replacement not confirmed")
+        if observed.strip() != expected.strip():
+            raise ControllerError("complete PF replacement read-back differs from canonical policy")
 
     def acquire(self):
         record = self.tokens.read()
