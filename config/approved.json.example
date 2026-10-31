@@ -1,0 +1,18 @@
+{
+  "experimental_ack": "I accept experimental PF behavior",
+  "service_uuid": "00000000-0000-0000-0000-000000000000",
+  "service_name": "V2BOX",
+  "profile": "replace-with-reviewed-profile-id",
+  "inventory": {
+    "version": 1,
+    "profiles": {
+      "replace-with-reviewed-profile-id": {
+        "revision": "replace-with-reviewed-revision",
+        "expires_at": 0,
+        "endpoints": [
+          {"address": "203.0.113.1", "port": 443, "protocol": "tcp"}
+        ]
+      }
+    }
+  }
+}

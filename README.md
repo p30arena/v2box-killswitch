@@ -35,6 +35,14 @@ This clears PF rules and states and disables PF; it can affect unrelated firewal
 
 The scripts and configuration are preserved for incident analysis only. They are not endorsed for installation. Any future replacement must be designed and tested on supported macOS releases, include a reliable local rollback that accounts for PF reference counting and launchd persistence, handle endpoint changes safely, define LAN policy explicitly, and be reviewed before publication.
 
+## Replacement development
+
+An experimental replacement is being developed. See [development status](docs/REDESIGN.md)
+and the [uninstalled development kit](docs/DEVELOPMENT-KIT.md). The client/helper/backend
+Enable/Disable paths are implemented but have not been deployed or validated end-to-end.
+Passing mock tests does not make them safe to deploy. The separate DEMO preview still
+has simulated controls only. The withdrawal warning remains in effect.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

@@ -1,0 +1,381 @@
+import AppKit
+import Foundation
+
+// Pinned client for the root-owned helper. No shell fallback or PF commands.
+// Source builds do not install/update the running app/helper.
+private let serviceName = "org.v2boxkillswitch.helper"
+
+private final class CompletionGate {
+    private let lock = NSLock()
+    private var finished = false
+    var pending: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return !finished
+    }
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if finished { return false }
+        finished = true
+        return true
+    }
+}
+
+final class GuardClient {
+    func request(_ operation: String, enabled: Bool? = nil, authorization: Data? = nil,
+                 completion: @escaping (Result<[String: String], Error>) -> Void) {
+        guard #available(macOS 13.0, *),
+              let hash = Bundle.main.object(forInfoDictionaryKey: "GuardHelperCDHash") as? String,
+              let pin = try? PeerPin(hash) else {
+            completion(.failure(ClientError.unavailable))
+            return
+        }
+        let connection = NSXPCConnection(machServiceName: serviceName, options: .privileged)
+        do { try pin.enforce(on: connection) }
+        catch {
+            connection.invalidate()
+            completion(.failure(ClientError.unavailable))
+            return
+        }
+        connection.remoteObjectInterface = NSXPCInterface(with: GuardXPCProtocol.self)
+        let gate = CompletionGate()
+        let finish: (Result<[String: String], Error>) -> Void = { result in
+            guard gate.claim() else { return }
+            connection.invalidationHandler = nil
+            connection.interruptionHandler = nil
+            connection.invalidate()
+            completion(result)
+        }
+        connection.invalidationHandler = { finish(.failure(ClientError.unavailable)) }
+        connection.interruptionHandler = { finish(.failure(ClientError.unavailable)) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 8) {
+            finish(.failure(ClientError.unavailable))
+        }
+        connection.resume()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+            finish(.failure(ClientError.unavailable))
+        }) as? GuardXPCProtocol else {
+            finish(.failure(ClientError.unavailable))
+            return
+        }
+        let reply: (Data?, String?) -> Void = { data, message in
+            if let message { finish(.failure(ClientError.rejected(message))) ; return }
+            guard let data,
+                  let object = try? JSONSerialization.jsonObject(with: data),
+                  let result = object as? [String: String] else {
+                finish(.failure(ClientError.malformedReply))
+                return
+            }
+            finish(.success(result))
+        }
+        switch operation {
+        case "status": proxy.status(reply)
+        case "toggle", "authorization":
+            guard let authorization else {
+                finish(.failure(ClientError.rejected("Administrator authorization is required.")))
+                return
+            }
+            // Verify a signed response on this SAME connection before sending
+            // the sensitive authorization form. A service name alone is not trust.
+            proxy.status { data, error in
+                guard gate.pending else { return }
+                guard HelperPreflight.allows(enabled: enabled, authorizationOnly: operation == "authorization",
+                                             data: data, message: error) else {
+                    finish(.failure(ClientError.rejected("Helper did not confirm this operation is available.")))
+                    return
+                }
+                if operation == "authorization" {
+                    proxy.checkAuthorization(authorization, reply: reply)
+                } else {
+                    proxy.setProtectionEnabled(enabled ?? false, authorization: authorization, reply: reply)
+                }
+            }
+        case "reconnect": proxy.reconnectVPN(reply)
+        default: finish(.failure(ClientError.unavailable))
+        }
+    }
+
+    enum ClientError: LocalizedError {
+        case unavailable, malformedReply, rejected(String)
+        var errorDescription: String? {
+            switch self {
+            case .unavailable: return "Helper unavailable or timed out. Action outcome and protection state are unknown."
+            case .malformedReply: return "Helper returned an invalid status. State is unknown."
+            case .rejected(let reason): return "Helper rejected the request: \(reason)"
+            }
+        }
+    }
+}
+
+final class MenuController: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private let client = GuardClient()
+    private var item: NSStatusItem!
+    private let actual = NSMenuItem(title: "Protection: UNAVAILABLE", action: nil, keyEquivalent: "")
+    private let vpn = NSMenuItem(title: "VPN health: UNKNOWN", action: nil, keyEquivalent: "")
+    private let mode = NSMenuItem(title: "Policy: UNKNOWN", action: nil, keyEquivalent: "")
+    private let trial = NSMenuItem(title: "Trial: not started", action: nil, keyEquivalent: "")
+    private let diagnostics = NSMenuItem(title: "Diagnostic history: unavailable", action: nil, keyEquivalent: "")
+    private let incident = NSMenuItem(title: "Recorded failure: unavailable", action: nil, keyEquivalent: "")
+    private var actionInFlight = false
+    private var statusInFlight = false
+    private var refreshTimer: Timer?
+    private var autoEnabled = false
+    private var autoAvailable = false
+    private let autoStatus = NSMenuItem(title: "Auto-reconnect: Off (this launch)", action: nil, keyEquivalent: "")
+    private let autoToggle = NSMenuItem(title: "Automatically reconnect V2Box (this launch)", action: #selector(toggleAutoReconnect), keyEquivalent: "")
+    private lazy var autoConnector = AppAutoReconnect { [weak self] text in self?.autoStatus.title = text }
+    private let toggle = NSMenuItem(title: "Enable Protection…", action: #selector(enableProtection), keyEquivalent: "")
+    private let disable = NSMenuItem(title: "Disable Protection…", action: #selector(disableProtection), keyEquivalent: "")
+    private var requestGeneration = 0
+    private let reconnect = NSMenuItem(title: "Reconnect VPN…", action: #selector(reconnectVPN), keyEquivalent: "")
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.title = "Guard ?"
+        item.button?.toolTip = "Protection state unknown until helper responds"
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.delegate = self
+        menu.addItem(NSMenuItem(title: "V2Box Guard", action: nil, keyEquivalent: ""))
+        menu.addItem(actual); menu.addItem(mode); menu.addItem(vpn); menu.addItem(trial)
+        menu.addItem(diagnostics); menu.addItem(incident); menu.addItem(.separator())
+        incident.toolTip = "Historical event; it may not describe current connectivity."
+        toggle.target = self; disable.target = self; reconnect.target = self
+        toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
+        menu.addItem(toggle); menu.addItem(disable); menu.addItem(reconnect)
+        autoToggle.target = self; autoToggle.isEnabled = false
+        autoToggle.toolTip = "Start disconnected VPN only; five attempts per opt-in. Never changes protection."
+        menu.addItem(autoStatus); menu.addItem(autoToggle); menu.addItem(.separator())
+        let authorize = NSMenuItem(title: "Verify Administrator Access…", action: #selector(verifyAuthorization), keyEquivalent: "")
+        authorize.target = self; menu.addItem(authorize)
+        let refresh = NSMenuItem(title: "Refresh Status", action: #selector(refreshStatus), keyEquivalent: "r")
+        refresh.target = self; menu.addItem(refresh)
+        let quit = NSMenuItem(title: "Quit (does not change protection)", action: #selector(quitApp), keyEquivalent: "q")
+        quit.target = self; menu.addItem(quit)
+        item.menu = menu
+        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in self?.refreshStatus() }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+        refreshStatus()
+    }
+
+    func menuWillOpen(_ menu: NSMenu) { refreshStatus() }
+
+    private func showDiagnostics(_ data: [String: String]) {
+        guard data["diagnostic_history"] == "available" else {
+            diagnostics.title = "Diagnostic history: unavailable"
+            incident.title = "Recorded failure: unavailable"
+            return
+        }
+        diagnostics.title = "Diagnostic history: available"
+        let stages = [
+            "read_config": "reading approval", "discover_interfaces": "interface discovery",
+            "discover_gateways": "gateway discovery", "discover_vpn": "VPN status discovery",
+            "discover_tunnel": "tunnel identity", "check_token": "PF token check",
+            "check_states": "existing PF states", "check_skip": "PF skip check",
+            "check_legacy": "legacy service check", "validate_approval": "approval validation",
+            "enable_enforcement": "enabling protection", "disable_enforcement": "disabling protection",
+            "refresh_enforcement": "refreshing protection", "approval_quarantine": "approval quarantine",
+            "fallback_quarantine": "fallback quarantine", "backend_init": "backend initialization",
+            "trial_wait": "test timer wait", "trial_deadline": "test deadline",
+            "trial_syntax": "timer quarantine syntax", "trial_disable_intent": "timer recording Off",
+            "trial_apply_quarantine": "timer loading quarantine", "trial_marker": "timer marker write",
+            "diagnostic_preflight": "diagnostic write check"
+        ]
+        let reasons = ["operation_failed": "operation failed", "approval_required": "approval needed",
+                       "policy_invalid": "invalid policy", "enforcement_failed": "enforcement failed"]
+        if data["last_failure_stage"] == nil {
+            incident.title = "Recorded failure: none recorded"
+        } else if let stage = stages[data["last_failure_stage"] ?? ""] {
+            let reason = reasons[data["last_failure_reason"] ?? ""] ?? "review needed"
+            incident.title = "Recorded failure: \(stage) — \(reason)"
+        } else {
+            incident.title = "Recorded failure: unavailable"
+        }
+    }
+
+    @objc private func refreshStatus() {
+        guard !actionInFlight, !statusInFlight else { return }
+        statusInFlight = true
+        requestGeneration += 1
+        let generation = requestGeneration
+        client.request("status") { [weak self] result in
+            let responseTime = ProcessInfo.processInfo.systemUptime
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.statusInFlight = false
+                guard generation == self.requestGeneration else { return }
+                switch result {
+                case .failure(let error):
+                    self.updateAutoReconnect([:], receivedAt: responseTime)
+                    self.actual.title = "Protection: ERROR / UNKNOWN"
+                    self.vpn.title = "VPN health: UNKNOWN"
+                    self.mode.title = "Policy: UNKNOWN"
+                    self.trial.title = "Trial: unavailable"
+                    self.showDiagnostics([:])
+                    self.toggle.isEnabled = false
+                    self.disable.isEnabled = true // Try authenticated Disable despite status failure.
+                    self.reconnect.isEnabled = false
+                    self.item.button?.title = "Guard !"
+                    self.item.button?.toolTip = error.localizedDescription
+                case .success(let data):
+                    let state = data["state"] ?? "unknown"
+                    let health = data["vpn_health"] ?? "unverified"
+                    guard ["on", "off", "error"].contains(state) else {
+                        self.updateAutoReconnect([:], receivedAt: responseTime)
+                        self.actual.title = "Protection: ERROR / UNKNOWN"
+                        self.vpn.title = "VPN health: UNKNOWN"
+                        self.mode.title = "Policy: UNKNOWN"
+                        self.trial.title = "Trial: unavailable"
+                        self.showDiagnostics([:])
+                        self.toggle.isEnabled = false
+                        self.disable.isEnabled = true
+                        self.reconnect.isEnabled = false
+                        self.item.button?.title = "Guard !"
+                        return
+                    }
+                    self.updateAutoReconnect(data, receivedAt: responseTime)
+                    self.showDiagnostics(data)
+                    switch data["trial_verdict"] {
+                    case "limited_ipv4_pass": self.trial.title = "Trial: IPv4 checks passed (limited)"
+                    case "inconclusive": self.trial.title = "Trial: inconclusive — review needed"
+                    case "unavailable": self.trial.title = "Trial: unavailable"
+                    default: self.trial.title = "Trial: not started"
+                    }
+                    self.actual.title = "Protection: \(state.uppercased())"
+                    self.vpn.title = "VPN health: \(health.uppercased())"
+                    self.mode.title = data["policy_mode"] == "quarantine"
+                        ? "Policy: QUARANTINE — approval required"
+                        : "Policy: \((data["policy_mode"] ?? "unknown").uppercased())"
+                    self.toggle.title = "Enable Protection…"
+                    // Enable must remain disabled until locally approved policy is
+                    // available in the helper. Status reply can explicitly grant it.
+                    self.toggle.isEnabled = data["can_enable"] == "true" && state != "on"
+                    // Recovery remains separately available when the helper can
+                    // remove our rules even if enforcement verification failed.
+                    self.disable.isEnabled = data["can_disable"] == "true"
+                    self.reconnect.isEnabled = data["can_reconnect"] == "true"
+                    self.item.button?.title = state == "on" ? "Guard ●" : (state == "off" ? "Guard ○" : "Guard !")
+                    self.item.button?.toolTip = "PF helper-reported state: \(state); VPN health: \(health)"
+                }
+            }
+        }
+    }
+
+    @objc private func verifyAuthorization() {
+        do {
+            let session = try AuthorizationSession()
+            client.request("authorization", authorization: session.externalData) { [weak self, session] result in
+                withExtendedLifetime(session) {
+                    DispatchQueue.main.async {
+                        let alert = NSAlert()
+                        switch result {
+                        case .success(let data) where data["authorized"] == "true":
+                            alert.messageText = "Administrator access verified"
+                            alert.informativeText = "The helper accepted authorization. No firewall change was requested."
+                        case .failure(let error):
+                            alert.messageText = "Authorization not verified"
+                            alert.informativeText = error.localizedDescription
+                        default:
+                            alert.messageText = "Authorization not verified"
+                            alert.informativeText = "Unexpected helper response. No firewall change was requested."
+                        }
+                        alert.addButton(withTitle: "OK"); alert.runModal()
+                        self?.refreshStatus()
+                    }
+                }
+            }
+        } catch { actionFinished(.failure(error)) }
+    }
+
+    @objc private func enableProtection() { changeProtection(enable: true) }
+    @objc private func disableProtection() { changeProtection(enable: false) }
+
+    private func changeProtection(enable: Bool) {
+        let alert = NSAlert()
+        alert.messageText = enable ? "Enable network protection?" : "Disable protection?"
+        alert.informativeText = enable
+            ? "This can interrupt network access. Only a locally approved policy may be enabled."
+            : "Disabling protection may allow direct internet traffic outside the VPN."
+        alert.addButton(withTitle: enable ? "Enable" : "Disable")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if !enable { pauseAutoReconnect() }
+        requestGeneration += 1 // Discard status replies from before this action.
+        actionInFlight = true
+        toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
+        do {
+            let session = try AuthorizationSession()
+            client.request("toggle", enabled: enable, authorization: session.externalData) { [weak self, session] result in
+                // Keep authorization alive until the helper reply/timeout.
+                withExtendedLifetime(session) {
+                    DispatchQueue.main.async { self?.actionFinished(result) }
+                }
+            }
+        } catch {
+            actionFinished(.failure(error))
+        }
+    }
+
+    private func actionFinished(_ result: Result<[String: String], Error>) {
+        actionInFlight = false
+        if case .failure(let error) = result {
+            let alert = NSAlert()
+            alert.messageText = "Action not confirmed"
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+        refreshStatus()
+    }
+
+    @objc private func reconnectVPN() {
+        actionInFlight = true
+        requestGeneration += 1
+        toggle.isEnabled = false; disable.isEnabled = false; reconnect.isEnabled = false
+        client.request("reconnect") { [weak self] result in
+            DispatchQueue.main.async { self?.actionFinished(result) }
+        }
+    }
+
+    private func updateAutoReconnect(_ status: [String: String], receivedAt: TimeInterval) {
+        let age = ProcessInfo.processInfo.systemUptime - receivedAt
+        autoAvailable = age.isFinite && age >= 0 && age <= 3
+            && status["can_auto_connect"] == "true" && status["state"] == "on"
+            && status["policy_mode"] == "approved"
+        if autoEnabled && !autoAvailable { autoStatus.title = "Auto-reconnect: paused — protection not verified" }
+        autoToggle.isEnabled = autoEnabled || autoAvailable
+        autoToggle.toolTip = autoAvailable
+            ? "Start disconnected VPN only; five attempts per opt-in. Never changes protection."
+            : "Requires the matching app/backend feature and verified approved protection."
+        autoConnector.observe(status, receivedAt: receivedAt)
+    }
+
+    private func pauseAutoReconnect() {
+        autoEnabled = false; autoToggle.state = .off
+        autoConnector.setEnabled(false)
+    }
+
+    @objc private func toggleAutoReconnect() {
+        if autoEnabled { pauseAutoReconnect(); return }
+        guard autoAvailable else { return }
+        let alert = NSAlert()
+        alert.messageText = "Automatically reconnect V2Box?"
+        alert.informativeText = "For this app session only: request Start when disconnected, at most five attempts. Never stops/restarts the VPN or changes protection. Connected does not prove internet health. Choosing Disable pauses this feature; a submitted request may still finish."
+        alert.addButton(withTitle: "Enable Auto-reconnect"); alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        autoEnabled = true; autoToggle.state = .on
+        autoConnector.setEnabled(true)
+        refreshStatus()
+    }
+
+    @objc private func quitApp() {
+        pauseAutoReconnect(); refreshTimer?.invalidate()
+        NSApp.terminate(nil)
+    }
+}
+
+let app = NSApplication.shared
+let delegate = MenuController()
+app.delegate = delegate
+app.run()
