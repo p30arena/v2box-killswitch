@@ -165,12 +165,73 @@ Sources:
 - https://help.obdev.at/littlesnitch5/adv-profiles
 - https://help.obdev.at/littlesnitch5/adv-commandline
 
-### Vallum — preliminary only
+### Vallum — strongest next candidate to ask/test, not yet approved
 
-The current vendor page advertises rule conditions based on network/interface
-activity, but current Vallum 6 requires macOS 14.6+. Neither a compatible legacy
-version nor packet-by-packet VPN-only enforcement was established. Interface
-activity conditions must not be equated with race-free egress enforcement.
+New documentation research found a more relevant feature than profile switching:
+Vallum is a per-flow `NEFilterDataProvider` application firewall whose rule
+conditions can match whether named system network interfaces are active/inactive.
+Its help says a single ruleset can block apps when VPN is not connected; it exposes
+app fingerprints, responsible-app identities, and pass/block rules. The official
+Vallum 4 help provides a substantive feature description, and release history lists
+Vallum 4 releases through 4.1.3 (2023), explicitly adding Sonoma compatibility.
+The current 6.0.1 page requires macOS 14.6+, so it cannot be used on the current
+macOS 13.7.8 host. Whether a supported/secure Vallum 4 release remains downloadable,
+maintained and compatible with this exact Ventura installation needs confirmation.
+
+This is **not yet equivalent to interface-bound routing or a certified kill switch**:
+- Help describes conditions on whether interfaces are active, as part of matching
+  app flows. It does not say the rule verifies that each app's individual packet
+  actually exits through the VPN interface.
+- Interface-state conditions can still have transition races or stale state. Need
+  vendor confirmation and a controlled test of tunnel-process crash, provider crash,
+  `utun` persistence/removal, and immediate physical-interface probes.
+- Docs say Vallum passes a flow if no rule matches. Rule order, quick/final-match
+  semantics, background action when GUI is absent, unknown condition behavior,
+  and all system/Apple/default exemptions must be configured/reviewed. A broad
+  `mDNSResponder`/Apple exemption risks authorizing unrelated apps' delegated DNS.
+- Vallum documentation describes a Network Extension system filter enabled when
+  Vallum.app is started and disabled when it quits. Need prove its login/background
+  lifetime, provider failure behavior, installed extension persistence, and safe
+  default when the UI/helper is not running.
+- There is no independently verified, supported automatic VPN-event integration
+  here. However a rule condition tied to `utun` interface presence could potentially
+  keep restrictive rules continuously present rather than switch firewall profiles;
+  this deserves the next inquiry.
+- Vallum 4.0.10 release notes warn that Apple's Packet Filter Provider may cause
+  issues in rare circumstances with third-party VPN apps or USB Ethernet adapters;
+  it is disabled by default for new installations from that version. Determine if
+  this applies to the desired policy and leave this unrelated component off unless
+  justified.
+
+Vendor sources:
+- https://www.vallumfirewall.com/ (Vallum 6.0.1 currently requires macOS 14.6+)
+- https://help.vallumfirewall.com/ (Vallum 4 Help: NEFilterDataProvider, per-flow
+  application identity, active/inactive interface conditions, default pass if no
+  rule matches)
+- https://help.vallumfirewall.com/index.php?chapter=ruleformat
+- https://help.vallumfirewall.com/index.php?chapter=rulesets
+- https://help.vallumfirewall.com/index.php?chapter=introduction
+- https://www.vallumfirewall.com/releasenotes.php (Vallum 4.1.3 Sonoma compatibility;
+  4.0.10 Packet Filter Provider warning)
+
+Suggested vendor questions before any purchase/install:
+1. Is current Vallum supported on macOS 13.7.8 Intel, and is Vallum 4 still safely
+   downloadable/supported? What exact build should be used?
+2. Can a deny rule for all third-party apps, conditional on a specific `utunN` being
+   inactive, be made persistent and noninteractive, while a V2Box signed-app rule
+   permits direct bootstrap/upstream traffic? What happens on a missing/ambiguous
+   interface condition?
+3. Is the condition based on actual per-flow egress interface, or only system
+   interface active state? How quickly does it update on Packet Tunnel crash? Does
+   it force-close already established flows or only decide new flows?
+4. What are the filter's behavior if its UI, privileged service or Network Extension
+   crashes/stops? Does macOS fail open or closed? Does its login item keep filtering
+   before the user manually opens the app?
+5. Can it enforce without GUI interaction and keep restrictive rules in effect when
+   no user is logged in? Which exceptions/default rules apply to delegated DNS?
+
+Do not install it or change its rules before checking compatibility, answers,
+rollback and explicit install/live-test approval.
 
 Source: https://www.vallumfirewall.com/
 
