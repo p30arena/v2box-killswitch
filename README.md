@@ -11,9 +11,10 @@ Off and its obsolete IP approval has been revoked. No further activation is plan
 
 A **separate, user-only V2Box reconnect tracker** now builds locally: native status
 callbacks, a 500 ms fallback, immediate Start requests and indefinite capped retries.
-It does not call the old helper or change PF. It has **not yet been installed or
-validated through a live disconnect/reconnect**. See [tracker scope, checks and
-limitations](docs/RECONNECT-TRACKER.md).
+It does not call the old helper or change PF. It is now **installed and running
+on the development Mac with user approval**, with automatic reconnect On and login
+startup configured. A live disconnect/reconnect, future login and crash restart
+have **not** been validated. See [tracker scope, checks and limitations](docs/RECONNECT-TRACKER.md).
 
 **Reconnection is not leak prevention:** real-IP exposure remains possible while
 the tunnel is down. Connected status is not proof of usable/protected internet.

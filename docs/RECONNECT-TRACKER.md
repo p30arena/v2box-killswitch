@@ -9,11 +9,19 @@ verified intent Off, PF disabled and an empty project anchor. No PF/token/VPN
 operation was used to revoke it. The old helper remains installed; the new tracker
 does not call it. Do not reactivate the withdrawn PF guard.
 
-**Built and tested locally, not installed or launched in automatic-start mode.**
-A read-only diagnostic successfully discovered the local V2Box service, observed
-its native state and registered the native event subscription. It could not call
-Start. A native subscription registering successfully is not a measured disconnect
-callback latency or an end-to-end reconnect test.
+**Installed and running after explicit user approval.** The user-only app and
+LaunchAgent were installed using the command below; launchd reported running,
+one launch and no exit on a subsequent check. The installed signature verified.
+No persisted Pause setting was present, so automatic reconnect defaults On.
+The old user watchdog was preserved privately and unloaded to avoid competition.
+No PF/helper/intent/token changes or deliberate VPN disconnection were performed.
+
+A separate read-only diagnostic successfully discovered the local V2Box service,
+observed its native state and registered the native event subscription. It could
+not call Start. That diagnostic is not instrumentation of the running app's
+callbacks. Successful subscription is not a measured disconnect latency or an
+end-to-end reconnect test. Future-login, crash-restart and real reconnect behavior
+have not yet been live-validated.
 
 ## Detection and automatic action
 
@@ -92,7 +100,8 @@ The flag explicitly preserves/unloads the known old `com.ali.v2box-vpn-guard`
 user watchdog to avoid competing reconnect agents at future login. It does not
 uninstall the old root helper/menu app or modify PF/intent/token files. Installation
 refuses occupied tracker destinations rather than overwriting a running app.
-The installer and login behavior have not yet been live-validated.
+The installation and immediate launch were live-validated after user approval;
+future-login and crash-restart behavior remain untested.
 
 ## Privacy limitation
 
