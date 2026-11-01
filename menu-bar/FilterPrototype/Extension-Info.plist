@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>V2BoxReadOnlyFlowObserver</string>
+  <key>CFBundleIdentifier</key><string>org.v2boxkillswitch.firewallprobe.extension</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>V2Box Read-Only Flow Observer</string>
+  <key>CFBundlePackageType</key><string>SYSX</string>
+  <key>CFBundleShortVersionString</key><string>0.1</string>
+  <key>CFBundleVersion</key><string>8</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>NSSystemExtensionUsageDescription</key>
+  <string>Observe synthetic test flows and packet interfaces to evaluate V2Box tunnel path attribution. Unresolved synthetic test-probe flows may be dropped; other flows are allowed.</string>
+  <key>NetworkExtension</key><dict>
+    <key>NEMachServiceName</key><string>group.org.v2boxkillswitch.firewallprobe.extension</string>
+    <key>NEProviderClasses</key><dict>
+      <key>com.apple.networkextension.filter-data</key>
+      <string>V2BoxReadOnlyFlowObserver.ReadOnlyFlowObserver</string>
+    </dict>
+  </dict>
+</dict></plist>
