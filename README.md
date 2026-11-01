@@ -16,7 +16,7 @@ on the development Mac with user approval**, with automatic reconnect On and log
 startup configured. A live disconnect/reconnect, future login and crash restart
 have **not** been validated. See [tracker scope, checks and limitations](docs/RECONNECT-TRACKER.md).
 
-Further independent-firewall research is [documented](docs/APP-FIREWALL-RESEARCH.md), including a potentially relevant Vallum per-flow rule condition based on whether a VPN interface is active. Exact Ventura compatibility and crash/fail-closed behavior need vendor confirmation and testing; no replacement firewall has been installed.
+The proposed narrow, independent V2Box-aware policy and staged feasibility gates are in the [scoped firewall plan](docs/SCOPED-VPN-FIREWALL-PLAN.md). This is a plan only; Apple entitlement and app-plus-egress enforcement feasibility are unresolved. Further third-party research is documented in [application-aware firewall research](docs/APP-FIREWALL-RESEARCH.md); no replacement firewall has been installed.
 
 **Reconnection is not leak prevention:** real-IP exposure remains possible while
 the tunnel is down. Connected status is not proof of usable/protected internet.
