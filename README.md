@@ -16,6 +16,8 @@ on the development Mac with user approval**, with automatic reconnect On and log
 startup configured. A live disconnect/reconnect, future login and crash restart
 have **not** been validated. See [tracker scope, checks and limitations](docs/RECONNECT-TRACKER.md).
 
+Further application-aware firewall/profile research is [documented and paused](docs/APP-FIREWALL-RESEARCH.md), including PureSnitch, LuLu and Little Snitch findings. No replacement firewall has been installed.
+
 **Reconnection is not leak prevention:** real-IP exposure remains possible while
 the tunnel is down. Connected status is not proof of usable/protected internet.
 
