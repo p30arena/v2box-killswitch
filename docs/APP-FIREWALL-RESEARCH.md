@@ -88,33 +88,58 @@ Sources:
 
 ### LuLu — real per-app filtering/profiles; automation and revocation unresolved
 
-Current documentation states profiles exist from v4.0 onward, containing separate
-rules and settings. Switching is documented through the settings UI/status menu.
-The product page advertises macOS 10.15+; exact release compatibility/support on
-this Intel macOS 13 machine must still be checked before installation.
+Research resumed against the newest GitHub stable release found at this snapshot,
+**LuLu v4.5.5** (GitHub release published 2026-10-30). Its DMG was downloaded to
+ignored `.build/` research storage, SHA-256 matched the GitHub API asset digest
+`c84c94912405eb852753fc3b51d79ad816d94c6b3b5aec4db4daf2eb8f357597`, and the
+read-only disk image passed `codesign --verify --deep --strict` and
+`spctl --assess` as **Notarized Developer ID**. The image was detached without
+copying, launching or installing the app. Bundle minimum is macOS 10.15, so the
+bundle is version-compatible with macOS 13; vendor advises upgrading macOS for
+NetworkExtension stability. The vendor product page still advertises v4.5.3,
+so release/download pages can lag GitHub.
 
-Source inspection pinned to **v4.5.3** found:
+Source inspection pinned to **v4.5.5** found:
 
-- `App/main.m`: command-line handling for installation/upgrade/uninstall/quit,
+- `LuLu/App/main.m`: command-line handling for installation/upgrade/uninstall/quit,
   not an established public profile-switch command.
-- `App/XPCDaemonClient.m`, `Extension/XPCDaemon.m`,
-  `Shared/XPCDaemonProto.h`: internal `setProfile` XPC operation.
-  An internal method is **not** a supported external API or authorization for our
-  tracker to call it. Do not bypass signing/peer checks or edit live rule files.
-- `Extension/FilterDataProvider.m`: new-flow allow/drop decisions and handling of
-  paused flows. This inspection did **not** establish revocation of already-allowed
-  flows when a profile changes. Documentation says new profiles apply to future
-  decisions; do not claim existing connections are blocked.
-- Existing permissive fallbacks, delegated flows and default OS-required rules
-  need explicit review against a V2Box-only restrictive profile. No blanket exemption
-  for all Apple programs, shared DNS or system daemons is acceptable by assumption.
+- `LuLu/App/StatusBarItem.m`: profile names are exposed in the app's menu, whose
+  selection calls into the app's own XPC client. This is a user GUI operation, not
+  supported external automation.
+- `LuLu/App/XPCDaemonClient.m`, `LuLu/Extension/XPCDaemon.m`,
+  `LuLu/Shared/XPCDaemonProto.h`: internal `setProfile` XPC operation. The daemon
+  validates the profile path, switches current profile, reloads rules/preferences,
+  then replies with success/failure. The UI caller separately shows a success alert
+  without checking the Boolean reply. This private XPC method is **not** a supported
+  external API or authorization for our tracker to call it. Do not bypass signing/
+  peer checks or edit live rule files.
+- `LuLu/Extension/FilterDataProvider.m`: outbound new flows get decisions. Switching
+  profile loads rules/preferences, but the switch method does not enumerate or
+  terminate established sockets; the source inspection found no evidence that
+  already-allowed TCP/UDP connections are revoked by a profile change. LuLu docs
+  describe subsequent/future decisions. Therefore the requested profile switching
+  does not currently meet the user's existing-connection test criterion.
+- The restrictive Block Mode is not a strict fail-closed boundary on every path:
+  missing/disabled preferences and kernel-origin flows are allowed; an uninspectable
+  but still-alive process is explicitly allowed; a different console-user flow is
+  allowed; when no GUI alert client is available the `allowNoClient` path creates a
+  passive allow rule. Default rules explicitly allow several system processes,
+  including `mDNSResponder`. These are intentional product behaviors but need direct
+  evaluation before using a restrictive profile; do not assume they only affect the
+  V2Box bootstrap flows.
+- V2Box UI, provider extension and helper may be distinct process identities. Exact
+  installed signed identities and DNS attribution still need inspection. No blanket
+  exemption for all Apple programs, shared DNS or system daemons is acceptable by
+  assumption.
 
 Sources:
+- https://github.com/objective-see/LuLu/releases/tag/v4.5.5
+- https://github.com/objective-see/LuLu/tree/v4.5.5/LuLu
+- https://github.com/objective-see/LuLu/blob/v4.5.5/LuLu/App/main.m
+- https://github.com/objective-see/LuLu/blob/v4.5.5/LuLu/App/StatusBarItem.m
+- https://github.com/objective-see/LuLu/blob/v4.5.5/LuLu/Extension/XPCDaemon.m
+- https://github.com/objective-see/LuLu/blob/v4.5.5/LuLu/Extension/FilterDataProvider.m
 - https://objective-see.org/products/lulu.html
-- https://github.com/objective-see/LuLu/tree/v4.5.3
-- https://github.com/objective-see/LuLu/blob/v4.5.3/LuLu/App/main.m
-- https://github.com/objective-see/LuLu/blob/v4.5.3/LuLu/Extension/XPCDaemon.m
-- https://github.com/objective-see/LuLu/blob/v4.5.3/LuLu/Extension/FilterDataProvider.m
 
 ### Little Snitch — compatible legacy version; switching details unresolved
 
