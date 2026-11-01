@@ -214,6 +214,45 @@ Vendor sources:
 - https://www.vallumfirewall.com/releasenotes.php (Vallum 4.1.3 Sonoma compatibility;
   4.0.10 Packet Filter Provider warning)
 
+A static fetch of the vendor's Vallum 4.1.3 release notes exposed a SHA256 reference
+but not an official binary download link; the current site links only Vallum 6.0.1.
+No old installer was downloaded. Do not obtain an old firewall build from third-party
+mirrors or VirusTotal just because its hash is listed there. As of this research,
+there are **no vendor answers yet**. The following is a draft request (not sent):
+
+> Subject: Vallum interface-conditioned outbound rules on Intel macOS Ventura
+>
+> I use an Intel Mac running macOS 13.7.8 and V2Box 10.2.0, which connects through
+> Apple's Packet Tunnel. I need an external outbound firewall policy that remains
+> active independently of the VPN process: allow V2Box and its provider direct
+> internet/bootstrap traffic (upstream IPs rotate), but block other applications'
+> traffic that would otherwise leave directly over Wi-Fi/Ethernet; permit their
+> traffic when the VPN is usable. I understand this is best effort unless you can
+> establish packet-level fail-closed behavior.
+>
+> 1. Is there a currently supported Vallum release for macOS 13.7.8 Intel? Is
+>    Vallum 4 still obtainable directly from you, and which exact build is supported?
+> 2. Can a persistent noninteractive outbound rule match all non-V2Box apps and
+>    block them while a specified `utun` is inactive, with an explicit V2Box
+>    app-fingerprint allow rule? What does an unknown/missing interface condition do?
+> 3. Does “interface active” match only global interface presence, or the actual
+>    egress interface for each flow? What if `utun` remains present after the VPN
+>    provider crashes, or its interface number changes after reconnect/network change?
+> 4. Are decisions re-evaluated for existing TCP/UDP flows after an interface state
+>    change, or only for newly created flows? Can any rule reliably terminate/revoke
+>    flows that were already allowed?
+> 5. What happens to enforcement if Vallum UI quits, its system extension crashes,
+>    or macOS reloads/stops the filter? Is the behavior fail-open or fail-closed?
+>    Does enforcement start at login before a user opens the app?
+> 6. Which built-in Apple/system/delegated-DNS exceptions bypass an app's block
+>    rule? Can shared resolver traffic be denied per requesting app without breaking
+>    other apps?
+> 7. Does Vallum 4's optional Packet Filter Provider interact poorly with V2Box or
+>    third-party Packet Tunnel providers? Should it remain disabled for this use?
+>
+> I will not activate a firewall policy until I know a reliable local disable and
+> rollback procedure and can test it without losing remote access.
+
 Suggested vendor questions before any purchase/install:
 1. Is current Vallum supported on macOS 13.7.8 Intel, and is Vallum 4 still safely
    downloadable/supported? What exact build should be used?
