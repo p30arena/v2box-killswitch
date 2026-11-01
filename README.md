@@ -4,6 +4,20 @@
 
 This repository is retained publicly to document the failure and prevent others from repeating it. It is **not a working or supported kill switch**.
 
+## Current direction: unattended reconnect tracker, not a kill switch
+
+The fixed-IP PF design has been rejected. The installed guard is intentionally
+Off and its obsolete IP approval has been revoked. No further activation is planned.
+
+A **separate, user-only V2Box reconnect tracker** now builds locally: native status
+callbacks, a 500 ms fallback, immediate Start requests and indefinite capped retries.
+It does not call the old helper or change PF. It has **not yet been installed or
+validated through a live disconnect/reconnect**. See [tracker scope, checks and
+limitations](docs/RECONNECT-TRACKER.md).
+
+**Reconnection is not leak prevention:** real-IP exposure remains possible while
+the tunnel is down. Connected status is not proof of usable/protected internet.
+
 ## Known failure modes
 
 - The PF policy blocks essentially all outbound traffic except the active tunnel and a specific VPN transport peer. It also blocks ordinary LAN access (for example, a router at `192.168.1.1`).
@@ -37,11 +51,12 @@ The scripts and configuration are preserved for incident analysis only. They are
 
 ## Replacement development
 
-An experimental replacement is being developed. See [development status](docs/REDESIGN.md)
-and the [uninstalled development kit](docs/DEVELOPMENT-KIT.md). The client/helper/backend
-Enable/Disable paths are implemented but have not been deployed or validated end-to-end.
-Passing mock tests does not make them safe to deploy. The separate DEMO preview still
-has simulated controls only. The withdrawal warning remains in effect.
+Historical PF experiments, including installed limited trials, are documented in
+[development status](docs/REDESIGN.md) and the [Disable failure](docs/DISABLE-FAILURE.md).
+Earlier trial success did not establish reliability; a subsequent menu Disable
+failure required user emergency intervention. The PF work and development kit are
+retained for analysis, not deployment. The withdrawal warning remains in effect.
+The standalone [reconnect tracker](docs/RECONNECT-TRACKER.md) is the new reduced scope.
 
 ## License
 
