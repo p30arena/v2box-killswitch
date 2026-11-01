@@ -126,6 +126,37 @@ References:
 - https://developer.apple.com/documentation/networkextension/nefiltermanager
 - https://developer.apple.com/documentation/networkextension
 
+## Execution status (2026-10-31): blocked at Phase 0
+
+The user authorized end-to-end execution. Phase 0 was started read-only; no system
+or VPN configuration was changed.
+
+- Current host: Intel macOS 13.7.8; only Command Line Tools are installed. `xcodebuild`
+  is unavailable because full Xcode is not installed.
+- `security find-identity -v -p codesigning`: **0 valid code-signing identities**.
+- No local `~/Library/MobileDevice/Provisioning Profiles` directory/profile was found.
+- Apple's current entitlement documentation says Developer ID distribution outside
+  the Mac App Store requires enabling Network Extensions for the app ID in
+  Certificates, Identifiers & Profiles, generating/downloading a provisioning
+  profile, and signing with that profile/certificate. This team-specific capability
+  cannot be checked or enabled from this unauthenticated host.
+- Source compile-only/fixture tests cannot prove NetworkExtension runtime behavior.
+  An app extension that actually receives macOS system flows must be installed and
+  authorized; doing that without a valid capability/profile/signature is not an
+  honest Phase 1 read-only observation.
+
+Therefore **execution is blocked before Phase 1**. There is no evidence yet that the
+user's Apple Developer team has or lacks the entitlement. Do not claim the plan was
+completed, and do not substitute ad-hoc signatures, private entitlements, PF, or
+third-party binaries. To resume, the account owner/developer must provide a full
+Xcode setup plus a Developer ID identity and a provisioning profile that explicitly
+contains the required content-filter-provider capability. Do not share passwords,
+private keys or account credentials with the agent. After that, separately authorize
+NetworkExtension registration/installation on a disposable test Mac or VM; do not
+use the current personal host for the first disruptive trial.
+
+Apple reference: https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.networkextension
+
 ## Phased implementation and stop conditions
 
 ### Phase 0 — prove Apple capability (no code deployment)
